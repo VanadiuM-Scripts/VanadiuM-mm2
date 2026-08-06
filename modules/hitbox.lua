@@ -36,11 +36,11 @@ function Hitbox:ExpandPart(part, sizeMultiplier)
     local originalSize = part.Size
     local originalTransparency = part.Transparency
     local originalCanCollide = part.CanCollide
+    local originalMassless = part.Massless
     
     -- Увеличиваем размер хитбокса
     part.Size = originalSize * sizeMultiplier
-    part.Transparency = 0.5  -- Делаем полупрозрачным для отладки
-    part.CanCollide = true
+    part.Massless = true  -- Чтобы не влияло на физику
     
     -- Сохраняем оригинальные значения
     return {
@@ -48,6 +48,7 @@ function Hitbox:ExpandPart(part, sizeMultiplier)
         originalSize = originalSize,
         originalTransparency = originalTransparency,
         originalCanCollide = originalCanCollide,
+        originalMassless = originalMassless,
     }
 end
 
@@ -57,12 +58,14 @@ function Hitbox:ResetPart(partData)
         part.Size = partData.originalSize
         part.Transparency = partData.originalTransparency
         part.CanCollide = partData.originalCanCollide
+        if partData.originalMassless ~= nil then
+            part.Massless = partData.originalMassless
+        end
     end
 end
 
 function Hitbox:ApplyHitboxExpansion()
     if not self.Settings.enabled then
-        self:ResetAll()
         return
     end
     
@@ -82,6 +85,10 @@ function Hitbox:ApplyHitboxExpansion()
                     local alreadyExpanded = false
                     for _, data in ipairs(self.ExpandedParts) do
                         if data.part == part then
+                            -- Обновляем размер если он изменился
+                            if data.part.Size ~= data.originalSize * sizeMultiplier then
+                                data.part.Size = data.originalSize * sizeMultiplier
+                            end
                             alreadyExpanded = true
                             break
                         end
@@ -97,6 +104,15 @@ function Hitbox:ApplyHitboxExpansion()
             end
         end
     end
+    
+    -- Очищаем хитбоксы мертвых игроков или тех, кто вышел
+    for i = #self.ExpandedParts, 1, -1 do
+        local data = self.ExpandedParts[i]
+        if not data.part or not data.part.Parent or not data.part.Parent.Parent then
+            -- Часть была удалена (игрок умер или вышел)
+            table.remove(self.ExpandedParts, i)
+        end
+    end
 end
 
 function Hitbox:ResetAll()
@@ -107,10 +123,16 @@ function Hitbox:ResetAll()
 end
 
 function Hitbox:Update()
-    self:ApplyHitboxExpansion()
+    if self.Settings.enabled then
+        self:ApplyHitboxExpansion()
+    else
+        self:ResetAll()
+    end
 end
 
 function Hitbox:Init()
+    print("[Hitbox] Initializing...")
+    
     -- Запускаем цикл обновления
     if self.Connections.update then
         self.Connections.update:Disconnect()
@@ -121,31 +143,71 @@ function Hitbox:Init()
         self.Connections.playerAdded:Disconnect()
     end
     
+    if self.Connections.characterAdded then
+        for _, conn in pairs(self.Connections.characterAdded) do
+            conn:Disconnect()
+        end
+    end
+    self.Connections.characterAdded = {}
+    
+    -- Heartbeat для постоянного обновления
     self.Connections.update = game:GetService("RunService").Heartbeat:Connect(function()
         self:Update()
     end)
     
     -- Обрабатываем новых игроков
+    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+        if player ~= game.Players.LocalPlayer then
+            self.Connections.characterAdded[player.UserId] = player.CharacterAdded:Connect(function(character)
+                task.wait(0.5) -- Даем время на загрузку персонажа
+                if self.Settings.enabled then
+                    self:ApplyHitboxExpansion()
+                end
+            end)
+        end
+    end
+    
+    -- Слушаем новых подключающихся игроков
     self.Connections.playerAdded = game:GetService("Players").PlayerAdded:Connect(function(player)
         if player ~= game.Players.LocalPlayer then
-            player.CharacterAdded:Connect(function()
-                task.wait(0.5) -- Даем время на загрузку персонажа
-                self:ApplyHitboxExpansion()
+            self.Connections.characterAdded[player.UserId] = player.CharacterAdded:Connect(function(character)
+                task.wait(0.5)
+                if self.Settings.enabled then
+                    self:ApplyHitboxExpansion()
+                end
             end)
         end
     end)
+    
+    -- Применяем к текущим игрокам
+    if self.Settings.enabled then
+        self:ApplyHitboxExpansion()
+    end
+    
+    print("[Hitbox] Initialized successfully")
 end
 
 function Hitbox:Destroy()
+    print("[Hitbox] Destroying...")
+    
     self:ResetAll()
     
-    for _, conn in ipairs(self.Connections) do
-        if conn then
+    for _, conn in pairs(self.Connections) do
+        if type(conn) == "table" then
+            -- Это таблица characterAdded connections
+            for _, subConn in pairs(conn) do
+                if subConn and subConn.Disconnect then
+                    subConn:Disconnect()
+                end
+            end
+        elseif conn and conn.Disconnect then
             conn:Disconnect()
         end
     end
     
     self.Connections = {}
+    
+    print("[Hitbox] Destroyed successfully")
 end
 
 return Hitbox
