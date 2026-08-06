@@ -2,245 +2,175 @@ local Aimbot = {}
 
 Aimbot.Settings = {
     enabled = false,
-    teamCheck = true,
+    roleCheck = true,
     smoothness = 0,
     showFOV = false,
     fovRadius = 150,
 }
 
 Aimbot.Target = nil
-Aimbot.FieldOfView = nil
+Aimbot.FOV = nil
 Aimbot.Connections = {}
 
-function Aimbot:GetPlayers()
-    local players = {}
-    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-        if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            table.insert(players, player)
-        end
-    end
-    return players
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local function hasDrawing()
+    return typeof(Drawing) == "table" and typeof(Drawing.new) == "function"
 end
 
-function Aimbot:GetHumanoidRootPart(player)
-    if player and player.Character then
-        return player.Character:FindFirstChild("HumanoidRootPart")
+function Aimbot:GetRole(player)
+    if not player then return "Unknown" end
+    local char = player.Character
+    local bag = player:FindFirstChild("Backpack")
+
+    local function has(name)
+        return (char and char:FindFirstChild(name)) or (bag and bag:FindFirstChild(name))
     end
-    return nil
+
+    if has("Knife") then return "Murderer" end
+    if has("Gun") then return "Sheriff" end
+    return "Innocent"
 end
 
-function Aimbot:GetHumanoid(player)
-    if player and player.Character then
-        return player.Character:FindFirstChild("Humanoid")
-    end
-    return nil
-end
-
-function Aimbot:IsTeammate(player)
-    local localPlayer = game.Players.LocalPlayer
-    if localPlayer and player then
-        return localPlayer.Team == player.Team
-    end
-    return false
+function Aimbot:IsSameRole(player)
+    local a = self:GetRole(LocalPlayer)
+    local b = self:GetRole(player)
+    return a ~= "Unknown" and a == b
 end
 
 function Aimbot:GetNearestTarget()
-    local players = self:GetPlayers()
-    local nearestPlayer = nil
-    local nearestDist = math.huge
-    local fovRadius = self.Settings.fovRadius
-    
-    local camera = game.Workspace.CurrentCamera
-    local localPlayer = game.Players.LocalPlayer
-    
-    if not camera or not localPlayer or not localPlayer.Character then
-        return nil
-    end
-    
-    local character = localPlayer.Character
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    
+    local cam = workspace.CurrentCamera
+    if not cam or not LocalPlayer.Character then return nil end
+
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
-    
-    local mouseLocation = game:GetService("UserInputService"):GetMouseLocation()
-    local viewportSize = camera.ViewportSize
-    local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
-    
-    for _, player in ipairs(players) do
-        if self.Settings.teamCheck and self:IsTeammate(player) then
-            continue
-        end
-        
-        local targetHrp = self:GetHumanoidRootPart(player)
-        local targetHumanoid = self:GetHumanoid(player)
-        
-        if not targetHrp or not targetHumanoid or targetHumanoid.Health <= 0 then 
-            continue 
-        end
-        
-        local screenPos, onScreen = camera:WorldToViewportPoint(targetHrp.Position)
-        
-        if onScreen then
-            local screenPos2D = Vector2.new(screenPos.X, screenPos.Y)
-            local distanceFromCenter = (screenPos2D - screenCenter).Magnitude
-            
-            if distanceFromCenter <= fovRadius and distanceFromCenter < nearestDist then
-                nearestDist = distanceFromCenter
-                nearestPlayer = player
-            end
+
+    local center = cam.ViewportSize / 2
+    local best, bestDist = nil, self.Settings.fovRadius
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        if self.Settings.roleCheck and self:IsSameRole(plr) then continue end
+
+        local char = plr.Character
+        if not char then continue end
+
+        local th = char:FindFirstChildOfClass("Humanoid")
+        local tr = char:FindFirstChild("HumanoidRootPart")
+        if not th or not tr or th.Health <= 0 then continue end
+
+        local sp, onScreen = cam:WorldToViewportPoint(tr.Position)
+        if not onScreen or sp.Z <= 0 then continue end
+
+        local dist = (Vector2.new(sp.X, sp.Y) - center).Magnitude
+        if dist < bestDist then
+            bestDist = dist
+            best = plr
         end
     end
-    
-    return nearestPlayer
+
+    return best
 end
 
-function Aimbot:GetFOVLinePosition(hrp, radius)
-    -- Эта функция больше не нужна для новой реализации FOV
-    return nil
+function Aimbot:EnsureFOV()
+    if not hasDrawing() then return end
+
+    if not self.FOV or not isrenderobj or not isrenderobj(self.FOV) then
+        local c = Drawing.new("Circle")
+        c.Filled = false
+        c.Thickness = 1.5
+        c.NumSides = 64
+        c.Color = Color3.fromRGB(255, 255, 255)
+        c.Transparency = 0.6
+        c.Visible = false
+        self.FOV = c
+    end
 end
 
-function Aimbot:DrawFOV()
-    if not self.Settings.showFOV then
-        self:ClearFOV()
+function Aimbot:UpdateFOV()
+    self:EnsureFOV()
+    if not self.FOV then return end
+
+    local cam = workspace.CurrentCamera
+    if not cam then
+        self.FOV.Visible = false
         return
     end
-    
-    -- Очистка старых объектов
-    if self.FieldOfView and self.FieldOfView.Parent then
-        self.FieldOfView:Destroy()
+
+    if self.Settings.showFOV and self.Settings.enabled then
+        self.FOV.Position = cam.ViewportSize / 2
+        self.FOV.Radius = self.Settings.fovRadius
+        self.FOV.Visible = true
+    else
+        self.FOV.Visible = false
     end
-    
-    local camera = game.Workspace.CurrentCamera
-    local localPlayer = game.Players.LocalPlayer
-    
-    if not camera or not localPlayer then
-        return
-    end
-    
-    local radius = self.Settings.fovRadius
-    
-    -- Создаем круг на экране для визуализации FOV
-    local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then return end
-    
-    local fovGui = playerGui:FindFirstChild("AimbotFOVGui")
-    if not fovGui then
-        fovGui = Instance.new("ScreenGui")
-        fovGui.Name = "AimbotFOVGui"
-        fovGui.ResetOnSpawn = false
-        fovGui.IgnoreGuiInset = true
-        fovGui.Parent = playerGui
-    end
-    
-    local circle = Instance.new("Frame")
-    circle.Name = "FOVCircle"
-    circle.AnchorPoint = Vector2.new(0.5, 0.5)
-    circle.BackgroundTransparency = 1
-    circle.Size = UDim2.new(0, radius * 2, 0, radius * 2)
-    circle.Position = UDim2.new(0.5, 0, 0.5, 0)
-    circle.ZIndex = 1
-    circle.Parent = fovGui
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(1, 0)
-    corner.Parent = circle
-    
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(255, 255, 255)
-    stroke.Thickness = 2
-    stroke.Transparency = 0.5
-    stroke.Parent = circle
-    
-    self.FieldOfView = fovGui
 end
 
 function Aimbot:ClearFOV()
-    if self.FieldOfView and self.FieldOfView.Parent then
-        self.FieldOfView:Destroy()
+    if self.FOV then
+        pcall(function() self.FOV:Destroy() end)
+        self.FOV = nil
     end
-    self.FieldOfView = nil
 end
 
-function Aimbot:AutoAim()
+function Aimbot:AimAt(hrp)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+
+    local origin = cam.CFrame.Position
+    local target = hrp.Position
+    local look = (target - origin).Unit
+    local goal = CFrame.new(origin, origin + look)
+
+    local s = self.Settings.smoothness
+    if s <= 0 then
+        cam.CFrame = goal
+    else
+        local alpha = math.clamp(1 / math.max(s, 0.05), 0.05, 1)
+        cam.CFrame = cam.CFrame:Lerp(goal, alpha)
+    end
+end
+
+function Aimbot:Update()
+    self:UpdateFOV()
+
     if not self.Settings.enabled then
+        self.Target = nil
         return
     end
-    
+
     local target = self:GetNearestTarget()
     self.Target = target
-    
-    if target then
-        local hrp = self:GetHumanoidRootPart(target)
+
+    if target and target.Character then
+        local hrp = target.Character:FindFirstChild("HumanoidRootPart")
         if hrp then
-            self:SmoothAimToTarget(hrp)
+            self:AimAt(hrp)
         end
     end
 end
 
-function Aimbot:SmoothAimToTarget(targetHrp)
-    local smoothness = self.Settings.smoothness
-    if smoothness <= 0 then 
-        -- Мгновенная наводка
-        smoothness = 1
-    end
-    
-    local localPlayer = game.Players.LocalPlayer
-    if not localPlayer or not localPlayer.Character then return end
-    
-    local character = localPlayer.Character
-    local hrp = character:FindFirstChild("HumanoidRootPart")
-    local camera = game.Workspace.CurrentCamera
-    
-    if not hrp or not camera then return end
-    
-    local targetPos = targetHrp.Position
-    local cameraPos = camera.CFrame.Position
-    
-    -- Вычисляем направление к цели
-    local lookVector = (targetPos - cameraPos).Unit
-    
-    -- Создаем CFrame направленный на цель
-    local targetCFrame = CFrame.new(cameraPos, cameraPos + lookVector)
-    
-    -- Применяем сглаживание
-    local currentCFrame = camera.CFrame
-    local alpha = math.clamp(1 / math.max(smoothness, 0.1), 0.01, 1)
-    
-    local newCFrame = currentCFrame:Lerp(targetCFrame, alpha)
-    camera.CFrame = newCFrame
-end
-
-function Aimbot:Update()
-    if self.Settings.enabled then
-        self:AutoAim()
-    else
-        self.Target = nil
-    end
-    
-    self:DrawFOV()
-end
-
 function Aimbot:Init()
-    -- Запускаем цикл обновления
-    if self.Connections.update then
-        self.Connections.update:Disconnect()
-    end
-    
-    self.Connections.update = game:GetService("RunService").RenderStepped:Connect(function()
+    self:Destroy()
+
+    self.Connections.render = RunService.RenderStepped:Connect(function()
         self:Update()
     end)
 end
 
 function Aimbot:Destroy()
     self:ClearFOV()
-    
-    for _, conn in ipairs(self.Connections) do
-        if conn then
+    self.Target = nil
+    self.Settings.enabled = false
+
+    for _, conn in pairs(self.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then
             conn:Disconnect()
         end
     end
-    
-    self.Connections = {}
+    table.clear(self.Connections)
 end
 
 return Aimbot
