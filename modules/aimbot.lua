@@ -59,37 +59,34 @@ function Aimbot:GetNearestTarget()
     
     local character = localPlayer.Character
     local hrp = character:FindFirstChild("HumanoidRootPart")
-    local mouse = localPlayer:FindFirstChild("PlayerScript") and localPlayer:FindFirstChild("PlayerScript"):FindFirstChild("Mouse") or localPlayer:GetMouse()
     
-    local localPos = hrp and hrp.Position or camera.CFrame.Position
-    local lookDir = camera.CFrame.LookVector
+    if not hrp then return nil end
+    
+    local mouseLocation = game:GetService("UserInputService"):GetMouseLocation()
+    local viewportSize = camera.ViewportSize
+    local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y / 2)
     
     for _, player in ipairs(players) do
         if self.Settings.teamCheck and self:IsTeammate(player) then
             continue
         end
         
-        local hrp = self:GetHumanoidRootPart(player)
-        if not hrp then continue end
+        local targetHrp = self:GetHumanoidRootPart(player)
+        local targetHumanoid = self:GetHumanoid(player)
         
-        local playerPos = hrp.Position
-        local toPlayer = playerPos - localPos
-        local dist = toPlayer.Magnitude
+        if not targetHrp or not targetHumanoid or targetHumanoid.Health <= 0 then 
+            continue 
+        end
         
-        -- Проверка в пределах FOV радиуса
-        if dist <= fovRadius then
-            local normalizedDir = toPlayer.Unit
-            local dotProduct = normalizedDir:Dot(lookDir)
+        local screenPos, onScreen = camera:WorldToViewportPoint(targetHrp.Position)
+        
+        if onScreen then
+            local screenPos2D = Vector2.new(screenPos.X, screenPos.Y)
+            local distanceFromCenter = (screenPos2D - screenCenter).Magnitude
             
-            -- Угол в радианах
-            local angle = math.acos(dotProduct) * 180 / math.pi
-            
-            -- Проверка в пределах угла (примерно 45 градусов по центру)
-            if angle <= 45 then
-                if dist < nearestDist then
-                    nearestDist = dist
-                    nearestPlayer = player
-                end
+            if distanceFromCenter <= fovRadius and distanceFromCenter < nearestDist then
+                nearestDist = distanceFromCenter
+                nearestPlayer = player
             end
         end
     end
@@ -98,26 +95,8 @@ function Aimbot:GetNearestTarget()
 end
 
 function Aimbot:GetFOVLinePosition(hrp, radius)
-    local camera = game.Workspace.CurrentCamera
-    local localPlayer = game.Players.LocalPlayer
-    
-    if not camera or not localPlayer or not localPlayer.Character then
-        return nil
-    end
-    
-    local character = localPlayer.Character
-    local hrpLocal = character:FindFirstChild("HumanoidRootPart")
-    local localPos = hrpLocal and hrpLocal.Position or camera.CFrame.Position
-    local lookDir = camera.CFrame.LookVector
-    
-    local playerPos = hrp.Position
-    local toPlayer = playerPos - localPos
-    local dist = toPlayer.Magnitude
-    local normalizedDir = toPlayer.Unit
-    
-    -- Точка на поверхности FOV сферы
-    local fovPos = localPos + lookDir * radius
-    return fovPos
+    -- Эта функция больше не нужна для новой реализации FOV
+    return nil
 end
 
 function Aimbot:DrawFOV()
@@ -134,30 +113,45 @@ function Aimbot:DrawFOV()
     local camera = game.Workspace.CurrentCamera
     local localPlayer = game.Players.LocalPlayer
     
-    if not camera or not localPlayer or not localPlayer.Character then
+    if not camera or not localPlayer then
         return
     end
     
     local radius = self.Settings.fovRadius
     
-    -- Создаем прозрачную сферу для визуализации FOV
-    local sphere = Instance.new("Part")
-    sphere.Name = "AimbotFOV"
-    sphere.Anchored = true
-    sphere.CanCollide = false
-    sphere.Transparency = 0.8
-    sphere.Shape = "Ball"
-    sphere.Size = Vector3.new(radius * 2, radius * 2, radius * 2)
-    sphere.Color = Color3.fromRGB(255, 255, 0)
-    sphere.Material = "Neon"
+    -- Создаем круг на экране для визуализации FOV
+    local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then return end
     
-    local character = localPlayer.Character
-    local hrp = character and character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        sphere.CFrame = CFrame.new(hrp.Position)
-        sphere.Parent = game.Workspace
-        self.FieldOfView = sphere
+    local fovGui = playerGui:FindFirstChild("AimbotFOVGui")
+    if not fovGui then
+        fovGui = Instance.new("ScreenGui")
+        fovGui.Name = "AimbotFOVGui"
+        fovGui.ResetOnSpawn = false
+        fovGui.IgnoreGuiInset = true
+        fovGui.Parent = playerGui
     end
+    
+    local circle = Instance.new("Frame")
+    circle.Name = "FOVCircle"
+    circle.AnchorPoint = Vector2.new(0.5, 0.5)
+    circle.BackgroundTransparency = 1
+    circle.Size = UDim2.new(0, radius * 2, 0, radius * 2)
+    circle.Position = UDim2.new(0.5, 0, 0.5, 0)
+    circle.ZIndex = 1
+    circle.Parent = fovGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(1, 0)
+    corner.Parent = circle
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.5
+    stroke.Parent = circle
+    
+    self.FieldOfView = fovGui
 end
 
 function Aimbot:ClearFOV()
@@ -185,7 +179,10 @@ end
 
 function Aimbot:SmoothAimToTarget(targetHrp)
     local smoothness = self.Settings.smoothness
-    if smoothness <= 0 then return end
+    if smoothness <= 0 then 
+        -- Мгновенная наводка
+        smoothness = 1
+    end
     
     local localPlayer = game.Players.LocalPlayer
     if not localPlayer or not localPlayer.Character then return end
@@ -196,28 +193,21 @@ function Aimbot:SmoothAimToTarget(targetHrp)
     
     if not hrp or not camera then return end
     
-    -- Проверяем тип камеры — меняем только если разрешено
-    if camera.CameraType ~= Enum.CameraType.Fixed and
-       camera.CameraType ~= Enum.CameraType.Scriptable then
-        return
-    end
-    
     local targetPos = targetHrp.Position
-    local localPos = hrp.Position
+    local cameraPos = camera.CFrame.Position
     
-    -- Вычисляем угол к цели
-    local lookVector = (targetPos - localPos).Unit
+    -- Вычисляем направление к цели
+    local lookVector = (targetPos - cameraPos).Unit
     
-    -- Поворачиваем камеру (псевдо-авто-наводка через camera.CFrame)
-    -- В реальной реализации нужен Raycast или нативный hook
-    local lookAtCFrame = CFrame.new(localPos, targetPos)
+    -- Создаем CFrame направленный на цель
+    local targetCFrame = CFrame.new(cameraPos, cameraPos + lookVector)
     
     -- Применяем сглаживание
     local currentCFrame = camera.CFrame
-    local goalCFrame = lookAtCFrame * CFrame.Angles(0, 0, 0)
+    local alpha = math.clamp(1 / math.max(smoothness, 0.1), 0.01, 1)
     
-    local interpolatedCFrame = currentCFrame:Lerp(goalCFrame, math.clamp(smoothness / 10, 0.01, 1))
-    camera.CFrame = interpolatedCFrame
+    local newCFrame = currentCFrame:Lerp(targetCFrame, alpha)
+    camera.CFrame = newCFrame
 end
 
 function Aimbot:Update()
