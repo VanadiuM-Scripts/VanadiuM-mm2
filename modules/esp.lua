@@ -3,444 +3,294 @@ local ESP = {}
 ESP.Settings = {
     enabled = false,
     box = false,
-    boxStyle = "2d", -- 2d, corner, 3d
+    boxStyle = "2d", -- 2d | corner | 3d
     skeleton = false,
     tracer = false,
     role = false,
 }
 
-ESP.Objects = {}
+ESP.Drawings = {} -- pool of active Drawing objects this frame
+ESP.Connections = {}
 
-function ESP:GetPlayers()
-    local players = {}
-    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-        if player ~= game.Players.LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            table.insert(players, player)
-        end
-    end
-    return players
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local function hasDrawing()
+    return typeof(Drawing) == "table" and typeof(Drawing.new) == "function"
 end
 
-function ESP:GetHumanoidRootPart(player)
-    if player and player.Character then
-        return player.Character:FindFirstChild("HumanoidRootPart")
+local ROLE_COLOR = {
+    Murderer = Color3.fromRGB(255, 50, 50),
+    Sheriff  = Color3.fromRGB(255, 210, 40),
+    Innocent = Color3.fromRGB(70, 255, 90),
+    Unknown  = Color3.fromRGB(200, 200, 200),
+}
+
+function ESP:GetRole(player)
+    if not player then return "Unknown" end
+    local char = player.Character
+    local bag = player:FindFirstChild("Backpack")
+
+    local function has(name)
+        return (char and char:FindFirstChild(name)) or (bag and bag:FindFirstChild(name))
     end
-    return nil
+
+    if has("Knife") then return "Murderer" end
+    if has("Gun") then return "Sheriff" end
+    return "Innocent"
 end
 
-function ESP:GetHumanoid(player)
-    if player and player.Character then
-        return player.Character:FindFirstChild("Humanoid")
-    end
-    return nil
+function ESP:WorldToScreen(pos)
+    local cam = workspace.CurrentCamera
+    if not cam then return Vector2.zero, false end
+    local v = typeof(pos) == "Vector3" and pos or pos.Position
+    local sp, on = cam:WorldToViewportPoint(v)
+    return Vector2.new(sp.X, sp.Y), on and sp.Z > 0
 end
 
-function ESP:GetRole(humanoid)
-    if humanoid then
-        local role = humanoid:FindFirstChild("Role")
-        if role then
-            return role.Value or "Innocent"
-        end
-        -- Если нет Role object, проверяем имя персонажа
-        local charName = humanoid.Parent.Name:lower()
-        if charName:find("sheriff") then
-            return "Sheriff"
-        elseif charName:find("innocent") then
-            return "Innocent"
-        elseif charName:find("murderer") or charName:find("murder") then
-            return "Murderer"
-        end
-    end
-    return "Unknown"
+function ESP:Line(from, to, color, thickness)
+    if not hasDrawing() then return end
+    local l = Drawing.new("Line")
+    l.From = from
+    l.To = to
+    l.Color = color
+    l.Thickness = thickness or 1.5
+    l.Transparency = 1
+    l.Visible = true
+    l.ZIndex = 2
+    table.insert(self.Drawings, l)
 end
 
-function ESP:GetPlayerColor(player, role)
-    local roleColors = {
-        ["Sheriff"] = Color3.fromRGB(255, 215, 0),
-        ["Innocent"] = Color3.fromRGB(0, 255, 0),
-        ["Murderer"] = Color3.fromRGB(255, 0, 0),
+function ESP:Label(text, pos, color, size)
+    if not hasDrawing() then return end
+    local t = Drawing.new("Text")
+    t.Text = text
+    t.Position = pos
+    t.Color = color
+    t.Size = size or 14
+    t.Center = true
+    t.Outline = true
+    t.OutlineColor = Color3.new(0, 0, 0)
+    t.Font = (Drawing.Fonts and Drawing.Fonts.UI) or 0
+    t.Transparency = 1
+    t.Visible = true
+    t.ZIndex = 3
+    table.insert(self.Drawings, t)
+end
+
+function ESP:Clear()
+    for _, d in ipairs(self.Drawings) do
+        pcall(function() d:Destroy() end)
+    end
+    table.clear(self.Drawings)
+end
+
+function ESP:Box2D(hrp, color)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local sp, on = self:WorldToScreen(hrp.Position)
+    if not on then return end
+
+    local dist = (cam.CFrame.Position - hrp.Position).Magnitude
+    local scale = math.clamp(900 / dist, 6, 90)
+    local w, h = scale * 0.85, scale * 1.55
+    local x, y = sp.X, sp.Y
+
+    self:Line(Vector2.new(x - w, y - h), Vector2.new(x + w, y - h), color)
+    self:Line(Vector2.new(x - w, y + h), Vector2.new(x + w, y + h), color)
+    self:Line(Vector2.new(x - w, y - h), Vector2.new(x - w, y + h), color)
+    self:Line(Vector2.new(x + w, y - h), Vector2.new(x + w, y + h), color)
+end
+
+function ESP:BoxCorner(hrp, color)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local sp, on = self:WorldToScreen(hrp.Position)
+    if not on then return end
+
+    local dist = (cam.CFrame.Position - hrp.Position).Magnitude
+    local scale = math.clamp(900 / dist, 6, 90)
+    local w, h = scale * 0.85, scale * 1.55
+    local c = math.min(w * 0.35, h * 0.25)
+    local x, y = sp.X, sp.Y
+
+    -- TL
+    self:Line(Vector2.new(x - w, y - h), Vector2.new(x - w + c, y - h), color)
+    self:Line(Vector2.new(x - w, y - h), Vector2.new(x - w, y - h + c), color)
+    -- TR
+    self:Line(Vector2.new(x + w - c, y - h), Vector2.new(x + w, y - h), color)
+    self:Line(Vector2.new(x + w, y - h), Vector2.new(x + w, y - h + c), color)
+    -- BL
+    self:Line(Vector2.new(x - w, y + h - c), Vector2.new(x - w, y + h), color)
+    self:Line(Vector2.new(x - w, y + h), Vector2.new(x - w + c, y + h), color)
+    -- BR
+    self:Line(Vector2.new(x + w - c, y + h), Vector2.new(x + w, y + h), color)
+    self:Line(Vector2.new(x + w, y + h - c), Vector2.new(x + w, y + h), color)
+end
+
+function ESP:Box3D(hrp, color)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local sp, on = self:WorldToScreen(hrp.Position)
+    if not on then return end
+
+    local dist = (cam.CFrame.Position - hrp.Position).Magnitude
+    local scale = math.clamp(900 / dist, 6, 90)
+    local w, h = scale * 0.85, scale * 1.55
+    local d = w * 0.35
+    local x, y = sp.X, sp.Y
+
+    local f = {
+        Vector2.new(x - w, y - h), Vector2.new(x + w, y - h),
+        Vector2.new(x + w, y + h), Vector2.new(x - w, y + h),
     }
-    return roleColors[role] or Color3.fromRGB(255, 255, 255)
-end
-
-function ESP:GetScreenPosition(position)
-    local camera = game.Workspace.CurrentCamera
-    if not camera then
-        return Vector2.new(0, 0), false
-    end
-    
-    local pos = position
-    if typeof(position) ~= "Vector3" then
-        pos = position.Position
-    end
-    
-    local screenPoint, onScreen = camera:WorldToViewportPoint(pos)
-    return Vector2.new(screenPoint.X, screenPoint.Y), onScreen
-end
-
-function ESP:DrawBox2d(hrp, size, color, thickness)
-    if not hrp then return end
-    
-    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
-    if not onScreen then return end
-    
-    local camera = game.Workspace.CurrentCamera
-    local size3d = size or Vector3.new(2, 5, 2)
-    
-    -- Вычисляем размер бокса на основе расстояния
-    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
-    local scaleFactor = 1000 / distance
-    
-    local pixelWidth = size3d.X * scaleFactor
-    local pixelHeight = size3d.Y * scaleFactor
-    
-    local x, y = screenPos.X, screenPos.Y
-    
-    -- Top line
-    ESP:DrawLine(x - pixelWidth, y - pixelHeight, x + pixelWidth, y - pixelHeight, thickness, color)
-    -- Bottom line
-    ESP:DrawLine(x - pixelWidth, y + pixelHeight, x + pixelWidth, y + pixelHeight, thickness, color)
-    -- Left line
-    ESP:DrawLine(x - pixelWidth, y - pixelHeight, x - pixelWidth, y + pixelHeight, thickness, color)
-    -- Right line
-    ESP:DrawLine(x + pixelWidth, y - pixelHeight, x + pixelWidth, y + pixelHeight, thickness, color)
-end
-
-function ESP:DrawCornerBox(hrp, size, color, thickness)
-    if not hrp then return end
-    
-    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
-    if not onScreen then return end
-    
-    local camera = game.Workspace.CurrentCamera
-    local size3d = size or Vector3.new(2, 5, 2)
-    
-    -- Вычисляем размер бокса на основе расстояния
-    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
-    local scaleFactor = 1000 / distance
-    
-    local pixelWidth = size3d.X * scaleFactor
-    local pixelHeight = size3d.Y * scaleFactor
-    
-    local x, y = screenPos.X, screenPos.Y
-    local cornerSize = math.min(pixelWidth * 0.25, pixelHeight * 0.15)
-    
-    -- Top left corner
-    ESP:DrawLine(x - pixelWidth, y - pixelHeight, x - pixelWidth + cornerSize, y - pixelHeight, thickness, color)
-    ESP:DrawLine(x - pixelWidth, y - pixelHeight, x - pixelWidth, y - pixelHeight + cornerSize, thickness, color)
-    -- Top right corner
-    ESP:DrawLine(x + pixelWidth - cornerSize, y - pixelHeight, x + pixelWidth, y - pixelHeight, thickness, color)
-    ESP:DrawLine(x + pixelWidth, y - pixelHeight, x + pixelWidth, y - pixelHeight + cornerSize, thickness, color)
-    -- Bottom left corner
-    ESP:DrawLine(x - pixelWidth, y + pixelHeight - cornerSize, x - pixelWidth, y + pixelHeight, thickness, color)
-    ESP:DrawLine(x - pixelWidth, y + pixelHeight, x - pixelWidth + cornerSize, y + pixelHeight, thickness, color)
-    -- Bottom right corner
-    ESP:DrawLine(x + pixelWidth - cornerSize, y + pixelHeight, x + pixelWidth, y + pixelHeight, thickness, color)
-    ESP:DrawLine(x + pixelWidth, y + pixelHeight - cornerSize, x + pixelWidth, y + pixelHeight, thickness, color)
-end
-
-function ESP:Draw3DBox(hrp, size, color)
-    if not hrp then return end
-    
-    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
-    if not onScreen then return end
-    
-    local camera = game.Workspace.CurrentCamera
-    local size3d = size or Vector3.new(2, 5, 2)
-    
-    -- Вычисляем размер бокса на основе расстояния
-    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
-    local scaleFactor = 1000 / distance
-    
-    local pixelWidth = size3d.X * scaleFactor
-    local pixelHeight = size3d.Y * scaleFactor
-    
-    local x, y = screenPos.X, screenPos.Y
-    
-    -- Draw 8 corners of a 3D box
-    local depthOffset = pixelWidth * 0.3
-    local corners = {
-        -- Front face
-        {x - pixelWidth, y - pixelHeight},
-        {x + pixelWidth, y - pixelHeight},
-        {x + pixelWidth, y + pixelHeight},
-        {x - pixelWidth, y + pixelHeight},
-        -- Back face
-        {x - pixelWidth + depthOffset, y - pixelHeight + depthOffset},
-        {x + pixelWidth + depthOffset, y - pixelHeight + depthOffset},
-        {x + pixelWidth + depthOffset, y + pixelHeight + depthOffset},
-        {x - pixelWidth + depthOffset, y + pixelHeight + depthOffset},
+    local b = {
+        Vector2.new(x - w + d, y - h + d), Vector2.new(x + w + d, y - h + d),
+        Vector2.new(x + w + d, y + h + d), Vector2.new(x - w + d, y + h + d),
     }
-    
-    -- Front face
-    ESP:DrawLine(corners[1][1], corners[1][2], corners[2][1], corners[2][2], 2, color)
-    ESP:DrawLine(corners[2][1], corners[2][2], corners[3][1], corners[3][2], 2, color)
-    ESP:DrawLine(corners[3][1], corners[3][2], corners[4][1], corners[4][2], 2, color)
-    ESP:DrawLine(corners[4][1], corners[4][2], corners[1][1], corners[1][2], 2, color)
-    
-    -- Back face
-    ESP:DrawLine(corners[5][1], corners[5][2], corners[6][1], corners[6][2], 1, color)
-    ESP:DrawLine(corners[6][1], corners[6][2], corners[7][1], corners[7][2], 1, color)
-    ESP:DrawLine(corners[7][1], corners[7][2], corners[8][1], corners[8][2], 1, color)
-    ESP:DrawLine(corners[8][1], corners[8][2], corners[5][1], corners[5][2], 1, color)
-    
-    -- Connecting lines
-    ESP:DrawLine(corners[1][1], corners[1][2], corners[5][1], corners[5][2], 1, color)
-    ESP:DrawLine(corners[2][1], corners[2][2], corners[6][1], corners[6][2], 1, color)
-    ESP:DrawLine(corners[3][1], corners[3][2], corners[7][1], corners[7][2], 1, color)
-    ESP:DrawLine(corners[4][1], corners[4][2], corners[8][1], corners[8][2], 1, color)
-end
 
-function ESP:DrawLine(x1, y1, x2, y2, thickness, color)
-    local parent = ESP:GetUIParent()
-    if not parent then return end
-    
-    local Line = Instance.new("Frame")
-    Line.AnchorPoint = Vector2.new(0.5, 0.5)
-    Line.BackgroundColor3 = color
-    Line.BorderSizePixel = 0
-    Line.ZIndex = 10
-    Line.Parent = parent
-    
-    local dx = x2 - x1
-    local dy = y2 - y1
-    local length = math.sqrt(dx * dx + dy * dy)
-    
-    if length > 0 then
-        Line.Size = UDim2.new(0, length, 0, thickness)
-        Line.Position = UDim2.new(0, (x1 + x2) / 2, 0, (y1 + y2) / 2)
-        Line.Rotation = math.deg(math.atan2(dy, dx))
-    else
-        Line.Size = UDim2.new(0, 1, 0, thickness)
-        Line.Position = UDim2.new(0, x1, 0, y1)
-        Line.Rotation = 0
+    for i = 1, 4 do
+        local n = i % 4 + 1
+        self:Line(f[i], f[n], color, 1.5)
+        self:Line(b[i], b[n], color, 1)
+        self:Line(f[i], b[i], color, 1)
     end
-    
-    table.insert(ESP.Objects, Line)
-    
-    return Line
 end
 
-function ESP:DrawTracer(hrp, color)
-    if not hrp then return end
-    
-    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
-    if not onScreen then return end
-    
-    local camera = game.Workspace.CurrentCamera
-    if not camera then return end
-    
-    local viewportSize = camera.ViewportSize
-    local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y)
-    
-    ESP:DrawLine(screenCenter.X, screenCenter.Y, screenPos.X, screenPos.Y, 2, color)
+function ESP:Tracer(hrp, color)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local sp, on = self:WorldToScreen(hrp.Position)
+    if not on then return end
+    local bottom = Vector2.new(cam.ViewportSize.X / 2, cam.ViewportSize.Y)
+    self:Line(bottom, sp, color, 1.5)
 end
 
-function ESP:DrawRoleText(hrp, role, color)
-    if not hrp then return end
-    
-    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
-    if not onScreen then return end
-    
-    local parent = ESP:GetUIParent()
-    if not parent then return end
-    
-    local camera = game.Workspace.CurrentCamera
-    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
-    local scaleFactor = 1000 / distance
-    
-    local Text = Instance.new("TextLabel")
-    Text.AnchorPoint = Vector2.new(0.5, 0)
-    Text.Text = role
-    Text.TextColor3 = color
-    Text.TextSize = math.clamp(scaleFactor * 0.8, 12, 18)
-    Text.Font = Enum.Font.SourceSansBold
-    Text.TextStrokeTransparency = 0.5
-    Text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    Text.BackgroundTransparency = 1
-    Text.Size = UDim2.new(0, 100, 0, 20)
-    Text.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + scaleFactor * 1.5)
-    Text.ZIndex = 10
-    Text.Parent = parent
-    table.insert(ESP.Objects, Text)
-    
-    return Text
+function ESP:RoleText(hrp, role, color)
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local sp, on = self:WorldToScreen(hrp.Position)
+    if not on then return end
+    local dist = (cam.CFrame.Position - hrp.Position).Magnitude
+    local scale = math.clamp(900 / dist, 6, 90)
+    self:Label(role, Vector2.new(sp.X, sp.Y + scale * 1.7), color, math.clamp(scale * 0.5, 12, 16))
 end
 
-function ESP:GetUIParent()
-    local localPlayer = game:GetService("Players").LocalPlayer
-    if not localPlayer then return nil end
-    
-    local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
-    if not playerGui then
-        playerGui = localPlayer:WaitForChild("PlayerGui", 5)
+function ESP:Skeleton(char, color)
+    local function part(...)
+        for _, name in ipairs({ ... }) do
+            local p = char:FindFirstChild(name)
+            if p and p:IsA("BasePart") then return p end
+        end
+        return nil
     end
-    
-    if not playerGui then return nil end
-    
-    local espGui = playerGui:FindFirstChild("VanadiuM_ESP")
-    if not espGui then
-        espGui = Instance.new("ScreenGui")
-        espGui.Name = "VanadiuM_ESP"
-        espGui.ResetOnSpawn = false
-        espGui.IgnoreGuiInset = true
-        espGui.Parent = playerGui
+
+    local function bone(a, b)
+        if not a or not b then return end
+        local p1, o1 = self:WorldToScreen(a.Position)
+        local p2, o2 = self:WorldToScreen(b.Position)
+        if o1 and o2 then
+            self:Line(p1, p2, color, 1.2)
+        end
     end
-    
-    return espGui
+
+    local head = part("Head")
+    local upper = part("UpperTorso", "Torso")
+    local lower = part("LowerTorso")
+    local lua = part("LeftUpperArm", "Left Arm")
+    local rua = part("RightUpperArm", "Right Arm")
+    local lla = part("LeftLowerArm")
+    local rla = part("RightLowerArm")
+    local lh = part("LeftHand")
+    local rh = part("RightHand")
+    local lul = part("LeftUpperLeg", "Left Leg")
+    local rul = part("RightUpperLeg", "Right Leg")
+    local lll = part("LeftLowerLeg")
+    local rll = part("RightLowerLeg")
+    local lf = part("LeftFoot")
+    local rf = part("RightFoot")
+
+    bone(head, upper)
+    bone(upper, lower)
+
+    bone(upper, lua)
+    bone(lua, lla)
+    bone(lla or lua, lh)
+
+    bone(upper, rua)
+    bone(rua, rla)
+    bone(rla or rua, rh)
+
+    local hip = lower or upper
+    bone(hip, lul)
+    bone(lul, lll)
+    bone(lll or lul, lf)
+
+    bone(hip, rul)
+    bone(rul, rll)
+    bone(rll or rul, rf)
 end
 
 function ESP:Update()
-    -- Clear old objects
-    for _, obj in ipairs(ESP.Objects) do
-        if obj and obj.Parent then
-            obj:Destroy()
+    self:Clear()
+    if not self.Settings.enabled then return end
+    if not hasDrawing() then return end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        local char = plr.Character
+        if not char then continue end
+
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hrp or not hum or hum.Health <= 0 then continue end
+
+        local role = self:GetRole(plr)
+        local color = ROLE_COLOR[role] or ROLE_COLOR.Unknown
+
+        if self.Settings.box then
+            if self.Settings.boxStyle == "corner" then
+                self:BoxCorner(hrp, color)
+            elseif self.Settings.boxStyle == "3d" then
+                self:Box3D(hrp, color)
+            else
+                self:Box2D(hrp, color)
+            end
         end
-    end
-    ESP.Objects = {}
-    
-    if not ESP.Settings.enabled then return end
-    
-    local players = ESP:GetPlayers()
-    
-    for _, player in ipairs(players) do
-        local hrp = ESP:GetHumanoidRootPart(player)
-        local humanoid = ESP:GetHumanoid(player)
-        
-        if hrp and humanoid and humanoid.Health > 0 then
-            local role = ESP:GetRole(humanoid)
-            local color = ESP:GetPlayerColor(player, role)
-            
-            -- Draw box
-            if ESP.Settings.box then
-                if ESP.Settings.boxStyle == "corner" then
-                    ESP:DrawCornerBox(hrp, nil, color, 2)
-                elseif ESP.Settings.boxStyle == "3d" then
-                    ESP:Draw3DBox(hrp, nil, color)
-                else
-                    ESP:DrawBox2d(hrp, nil, color, 2)
-                end
-            end
-            
-            -- Draw skeleton
-            if ESP.Settings.skeleton then
-                ESP:DrawSkeleton(hrp, color)
-            end
-            
-            -- Draw tracer
-            if ESP.Settings.tracer then
-                ESP:DrawTracer(hrp, color)
-            end
-            
-            -- Draw role
-            if ESP.Settings.role then
-                ESP:DrawRoleText(hrp, role, color)
-            end
+
+        if self.Settings.skeleton then
+            self:Skeleton(char, color)
+        end
+
+        if self.Settings.tracer then
+            self:Tracer(hrp, color)
+        end
+
+        if self.Settings.role then
+            self:RoleText(hrp, role, color)
         end
     end
 end
-
-function ESP:DrawSkeleton(hrp, color)
-    local char = hrp.Parent
-    if not char then return end
-    
-    -- Get body parts (supports both R6 and R15)
-    local head = char:FindFirstChild("Head")
-    local leftArm = char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftArm")
-    local rightArm = char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm") or char:FindFirstChild("RightArm")
-    local leftLeg = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg") or char:FindFirstChild("LeftLeg")
-    local rightLeg = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg") or char:FindFirstChild("RightLeg")
-    local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-    local lowerTorso = char:FindFirstChild("LowerTorso")
-    
-    if not torso then return end
-    
-    local function drawBone(part1, part2)
-        if part1 and part2 and part1:IsA("BasePart") and part2:IsA("BasePart") then
-            local pos1, onScreen1 = ESP:GetScreenPosition(part1.Position)
-            local pos2, onScreen2 = ESP:GetScreenPosition(part2.Position)
-            
-            if onScreen1 and onScreen2 then
-                ESP:DrawLine(pos1.X, pos1.Y, pos2.X, pos2.Y, 1, color)
-            end
-        end
-    end
-    
-    -- Connect body parts
-    if head and torso then
-        drawBone(head, torso)
-    end
-    
-    if leftArm and torso then
-        drawBone(torso, leftArm)
-        local leftLowerArm = char:FindFirstChild("LeftLowerArm") or char:FindFirstChild("LeftHand")
-        if leftLowerArm then drawBone(leftArm, leftLowerArm) end
-    end
-    
-    if rightArm and torso then
-        drawBone(torso, rightArm)
-        local rightLowerArm = char:FindFirstChild("RightLowerArm") or char:FindFirstChild("RightHand")
-        if rightLowerArm then drawBone(rightArm, rightLowerArm) end
-    end
-    
-    -- Connect torso to lower body (R15)
-    if lowerTorso then
-        drawBone(torso, lowerTorso)
-        if leftLeg then
-            drawBone(lowerTorso, leftLeg)
-        end
-        if rightLeg then
-            drawBone(lowerTorso, rightLeg)
-        end
-    else
-        -- R6 style
-        if leftLeg and torso then
-            drawBone(torso, leftLeg)
-        end
-        if rightLeg and torso then
-            drawBone(torso, rightLeg)
-        end
-    end
-    
-    -- Connect legs to feet
-    if leftLeg then
-        local leftLowerLeg = char:FindFirstChild("LeftLowerLeg") or char:FindFirstChild("LeftFoot")
-        if leftLowerLeg then drawBone(leftLeg, leftLowerLeg) end
-    end
-    
-    if rightLeg then
-        local rightLowerLeg = char:FindFirstChild("RightLowerLeg") or char:FindFirstChild("RightFoot")
-        if rightLowerLeg then drawBone(rightLeg, rightLowerLeg) end
-    end
-end
-
-ESP.Connections = {}
 
 function ESP:Init()
-    -- Запускаем цикл обновления
-    if self.Connections.update then
-        self.Connections.update:Disconnect()
-    end
-    
-    self.Connections.update = game:GetService("RunService").RenderStepped:Connect(function()
+    self:Destroy()
+
+    self.Connections.render = RunService.RenderStepped:Connect(function()
         self:Update()
     end)
 end
 
 function ESP:Destroy()
-    -- Clear all objects
-    for _, obj in ipairs(self.Objects) do
-        if obj and obj.Parent then
-            obj:Destroy()
+    self:Clear()
+    self.Settings.enabled = false
+
+    for _, conn in pairs(self.Connections) do
+        if typeof(conn) == "RBXScriptConnection" then
+            conn:Disconnect()
         end
     end
-    self.Objects = {}
-    
-    -- Disconnect update loop
-    if self.Connections.update then
-        self.Connections.update:Disconnect()
-    end
-    self.Connections = {}
+    table.clear(self.Connections)
 end
 
 return ESP
