@@ -196,6 +196,12 @@ function Aimbot:SmoothAimToTarget(targetHrp)
     
     if not hrp or not camera then return end
     
+    -- Проверяем тип камеры — меняем только если разрешено
+    if camera.CameraType ~= Enum.CameraType.Fixed and
+       camera.CameraType ~= Enum.CameraType.Scriptable then
+        return
+    end
+    
     local targetPos = targetHrp.Position
     local localPos = hrp.Position
     
