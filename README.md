@@ -1,5 +1,5 @@
 # VanadiuM-mm2
-first of all, check your executor, this script doesnt need to check, because support even xeno
+first of all, check your executor, this script doesnt need to check, because support even xeno (maybe)
 
 second, paste to your executor script from loader.lua
 
