@@ -78,18 +78,21 @@ function ESP:GetScreenPosition(position)
     return Vector2.new(screenPoint.X, screenPoint.Y), onScreen
 end
 
-function ESP:DrawBox2d(position, size, color, thickness)
-    local screenPos, onScreen = ESP:GetScreenPosition(position)
+function ESP:DrawBox2d(hrp, size, color, thickness)
+    if not hrp then return end
+    
+    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
     if not onScreen then return end
     
     local camera = game.Workspace.CurrentCamera
-    local size3d = size or Vector3.new(2, 4, 2)
-    local height = size3d.Y * 2
-    local width = size3d.X * 2
+    local size3d = size or Vector3.new(2, 5, 2)
     
-    -- Примерная конвертация 3D размера в 2D пиксели
-    local pixelWidth = width * 0.5
-    local pixelHeight = height * 0.5
+    -- Вычисляем размер бокса на основе расстояния
+    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
+    local scaleFactor = 1000 / distance
+    
+    local pixelWidth = size3d.X * scaleFactor
+    local pixelHeight = size3d.Y * scaleFactor
     
     local x, y = screenPos.X, screenPos.Y
     
@@ -103,20 +106,24 @@ function ESP:DrawBox2d(position, size, color, thickness)
     ESP:DrawLine(x + pixelWidth, y - pixelHeight, x + pixelWidth, y + pixelHeight, thickness, color)
 end
 
-function ESP:DrawCornerBox(position, size, color, thickness)
-    local screenPos, onScreen = ESP:GetScreenPosition(position)
+function ESP:DrawCornerBox(hrp, size, color, thickness)
+    if not hrp then return end
+    
+    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
     if not onScreen then return end
     
     local camera = game.Workspace.CurrentCamera
-    local size3d = size or Vector3.new(2, 4, 2)
-    local height = size3d.Y * 2
-    local width = size3d.X * 2
+    local size3d = size or Vector3.new(2, 5, 2)
     
-    local pixelWidth = width * 0.5
-    local pixelHeight = height * 0.5
+    -- Вычисляем размер бокса на основе расстояния
+    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
+    local scaleFactor = 1000 / distance
+    
+    local pixelWidth = size3d.X * scaleFactor
+    local pixelHeight = size3d.Y * scaleFactor
     
     local x, y = screenPos.X, screenPos.Y
-    local cornerSize = pixelWidth * 0.3
+    local cornerSize = math.min(pixelWidth * 0.25, pixelHeight * 0.15)
     
     -- Top left corner
     ESP:DrawLine(x - pixelWidth, y - pixelHeight, x - pixelWidth + cornerSize, y - pixelHeight, thickness, color)
@@ -132,37 +139,44 @@ function ESP:DrawCornerBox(position, size, color, thickness)
     ESP:DrawLine(x + pixelWidth, y + pixelHeight - cornerSize, x + pixelWidth, y + pixelHeight, thickness, color)
 end
 
-function ESP:Draw3DBox(position, size, color)
-    local screenPos, onScreen = ESP:GetScreenPosition(position)
+function ESP:Draw3DBox(hrp, size, color)
+    if not hrp then return end
+    
+    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
     if not onScreen then return end
     
     local camera = game.Workspace.CurrentCamera
-    local size3d = size or Vector3.new(2, 4, 2)
-    local height = size3d.Y * 2
-    local width = size3d.X * 2
+    local size3d = size or Vector3.new(2, 5, 2)
     
-    local pixelWidth = width * 0.5
-    local pixelHeight = height * 0.5
+    -- Вычисляем размер бокса на основе расстояния
+    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
+    local scaleFactor = 1000 / distance
+    
+    local pixelWidth = size3d.X * scaleFactor
+    local pixelHeight = size3d.Y * scaleFactor
     
     local x, y = screenPos.X, screenPos.Y
     
     -- Draw 8 corners of a 3D box
+    local depthOffset = pixelWidth * 0.3
     local corners = {
+        -- Front face
         {x - pixelWidth, y - pixelHeight},
         {x + pixelWidth, y - pixelHeight},
         {x + pixelWidth, y + pixelHeight},
         {x - pixelWidth, y + pixelHeight},
-        {x - pixelWidth * 0.7, y - pixelHeight * 0.8}, -- Top back
-        {x + pixelWidth * 0.7, y - pixelHeight * 0.8},
-        {x + pixelWidth * 0.7, y + pixelHeight * 0.8},
-        {x - pixelWidth * 0.7, y + pixelHeight * 0.8},
+        -- Back face
+        {x - pixelWidth + depthOffset, y - pixelHeight + depthOffset},
+        {x + pixelWidth + depthOffset, y - pixelHeight + depthOffset},
+        {x + pixelWidth + depthOffset, y + pixelHeight + depthOffset},
+        {x - pixelWidth + depthOffset, y + pixelHeight + depthOffset},
     }
     
     -- Front face
-    ESP:DrawLine(corners[1][1], corners[1][2], corners[2][1], corners[2][2], 1, color)
-    ESP:DrawLine(corners[2][1], corners[2][2], corners[3][1], corners[3][2], 1, color)
-    ESP:DrawLine(corners[3][1], corners[3][2], corners[4][1], corners[4][2], 1, color)
-    ESP:DrawLine(corners[4][1], corners[4][2], corners[1][1], corners[1][2], 1, color)
+    ESP:DrawLine(corners[1][1], corners[1][2], corners[2][1], corners[2][2], 2, color)
+    ESP:DrawLine(corners[2][1], corners[2][2], corners[3][1], corners[3][2], 2, color)
+    ESP:DrawLine(corners[3][1], corners[3][2], corners[4][1], corners[4][2], 2, color)
+    ESP:DrawLine(corners[4][1], corners[4][2], corners[1][1], corners[1][2], 2, color)
     
     -- Back face
     ESP:DrawLine(corners[5][1], corners[5][2], corners[6][1], corners[6][2], 1, color)
@@ -207,35 +221,45 @@ function ESP:DrawLine(x1, y1, x2, y2, thickness, color)
     return Line
 end
 
-function ESP:DrawTracer(position, color)
-    local screenPos, onScreen = ESP:GetScreenPosition(position)
+function ESP:DrawTracer(hrp, color)
+    if not hrp then return end
+    
+    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
     if not onScreen then return end
     
-    local screenCenter = Vector2.new(
-        game.Workspace.CurrentCamera.ViewportSize.X / 2,
-        game.Workspace.CurrentCamera.ViewportSize.Y / 2
-    )
+    local camera = game.Workspace.CurrentCamera
+    if not camera then return end
     
-    ESP:DrawLine(screenCenter.X, screenCenter.Y, screenPos.X, screenPos.Y, 1, color)
+    local viewportSize = camera.ViewportSize
+    local screenCenter = Vector2.new(viewportSize.X / 2, viewportSize.Y)
+    
+    ESP:DrawLine(screenCenter.X, screenCenter.Y, screenPos.X, screenPos.Y, 2, color)
 end
 
-function ESP:DrawRoleText(position, role, color)
-    local screenPos, onScreen = ESP:GetScreenPosition(position)
+function ESP:DrawRoleText(hrp, role, color)
+    if not hrp then return end
+    
+    local screenPos, onScreen = ESP:GetScreenPosition(hrp.Position)
     if not onScreen then return end
     
     local parent = ESP:GetUIParent()
     if not parent then return end
     
+    local camera = game.Workspace.CurrentCamera
+    local distance = (camera.CFrame.Position - hrp.Position).Magnitude
+    local scaleFactor = 1000 / distance
+    
     local Text = Instance.new("TextLabel")
-    Text.AnchorPoint = Vector2.new(0.5, 0.5)
+    Text.AnchorPoint = Vector2.new(0.5, 0)
     Text.Text = role
     Text.TextColor3 = color
-    Text.TextSize = 14
+    Text.TextSize = math.clamp(scaleFactor * 0.8, 12, 18)
     Text.Font = Enum.Font.SourceSansBold
     Text.TextStrokeTransparency = 0.5
+    Text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     Text.BackgroundTransparency = 1
     Text.Size = UDim2.new(0, 100, 0, 20)
-    Text.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + 30)
+    Text.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + scaleFactor * 1.5)
     Text.ZIndex = 10
     Text.Parent = parent
     table.insert(ESP.Objects, Text)
@@ -290,11 +314,11 @@ function ESP:Update()
             -- Draw box
             if ESP.Settings.box then
                 if ESP.Settings.boxStyle == "corner" then
-                    ESP:DrawCornerBox(hrp, nil, color, 1)
+                    ESP:DrawCornerBox(hrp, nil, color, 2)
                 elseif ESP.Settings.boxStyle == "3d" then
                     ESP:Draw3DBox(hrp, nil, color)
                 else
-                    ESP:DrawBox2d(hrp, nil, color, 1)
+                    ESP:DrawBox2d(hrp, nil, color, 2)
                 end
             end
             
