@@ -2,212 +2,142 @@ local Hitbox = {}
 
 Hitbox.Settings = {
     enabled = false,
-    size = 1,
+    size = 2,
 }
 
-Hitbox.ExpandedParts = {}
+Hitbox.Store = {} -- [BasePart] = { originalSize, originalMassless }
 Hitbox.Connections = {}
 
-function Hitbox:GetPlayerParts(player)
-    local parts = {}
-    if player and player.Character then
-        -- Получаем только основные хитбоксы
-        local hrp = player.Character:FindFirstChild("HumanoidRootPart")
-        local torso = player.Character:FindFirstChild("Torso") or player.Character:FindFirstChild("UpperTorso")
-        
-        if hrp then
-            table.insert(parts, hrp)
-        end
-        if torso and torso ~= hrp then
-            table.insert(parts, torso)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+local VALID = {
+    HumanoidRootPart = true,
+    Torso = true,
+    UpperTorso = true,
+}
+
+function Hitbox:Parts(char)
+    local out = {}
+    if not char then return out end
+    for name in pairs(VALID) do
+        local p = char:FindFirstChild(name)
+        if p and p:IsA("BasePart") then
+            table.insert(out, p)
         end
     end
-    return parts
+    return out
 end
 
-function Hitbox:ExpandPart(part, sizeMultiplier)
-    if not part or not part:IsA("BasePart") then return end
-    
-    -- Проверяем, что часть - это хитбокс (HumanoidRootPart или Torso)
-    if part.Name ~= "HumanoidRootPart" and part.Name ~= "Torso" and part.Name ~= "UpperTorso" then
-        return nil
+function Hitbox:Expand(part, mult)
+    if not part or not part:IsA("BasePart") or not VALID[part.Name] then return end
+
+    if not self.Store[part] then
+        self.Store[part] = {
+            originalSize = part.Size,
+            originalMassless = part.Massless,
+        }
     end
-    
-    local originalSize = part.Size
-    local originalTransparency = part.Transparency
-    local originalCanCollide = part.CanCollide
-    local originalMassless = part.Massless
-    
-    -- Увеличиваем размер хитбокса
-    part.Size = originalSize * sizeMultiplier
-    part.Massless = true  -- Чтобы не влияло на физику
-    
-    -- Сохраняем оригинальные значения
-    return {
-        part = part,
-        originalSize = originalSize,
-        originalTransparency = originalTransparency,
-        originalCanCollide = originalCanCollide,
-        originalMassless = originalMassless,
-    }
-end
 
-function Hitbox:ResetPart(partData)
-    if partData and partData.part and partData.part.Parent then
-        local part = partData.part
-        part.Size = partData.originalSize
-        part.Transparency = partData.originalTransparency
-        part.CanCollide = partData.originalCanCollide
-        if partData.originalMassless ~= nil then
-            part.Massless = partData.originalMassless
-        end
+    local data = self.Store[part]
+    local want = data.originalSize * math.max(1, mult)
+    if part.Size ~= want then
+        part.Size = want
+        part.Massless = true
     end
 end
 
-function Hitbox:ApplyHitboxExpansion()
-    if not self.Settings.enabled then
-        return
+function Hitbox:Reset(part)
+    local data = self.Store[part]
+    if data and part and part.Parent then
+        part.Size = data.originalSize
+        part.Massless = data.originalMassless
     end
-    
-    local sizeMultiplier = self.Settings.size
-    
-    -- Проходим по всем игрокам
-    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-        if player ~= game.Players.LocalPlayer and player.Character then
-            local humanoid = player.Character:FindFirstChild("Humanoid")
-            
-            -- Проверяем, жив ли игрок
-            if humanoid and humanoid.Health > 0 then
-                local parts = self:GetPlayerParts(player)
-                
-                for _, part in ipairs(parts) do
-                    -- Проверяем, не был ли уже расширен этот хитбокс
-                    local alreadyExpanded = false
-                    for _, data in ipairs(self.ExpandedParts) do
-                        if data.part == part then
-                            -- Обновляем размер если он изменился
-                            if data.part.Size ~= data.originalSize * sizeMultiplier then
-                                data.part.Size = data.originalSize * sizeMultiplier
-                            end
-                            alreadyExpanded = true
-                            break
-                        end
-                    end
-                    
-                    if not alreadyExpanded then
-                        local expansionData = self:ExpandPart(part, sizeMultiplier)
-                        if expansionData then
-                            table.insert(self.ExpandedParts, expansionData)
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    -- Очищаем хитбоксы мертвых игроков или тех, кто вышел
-    for i = #self.ExpandedParts, 1, -1 do
-        local data = self.ExpandedParts[i]
-        if not data.part or not data.part.Parent or not data.part.Parent.Parent then
-            -- Часть была удалена (игрок умер или вышел)
-            table.remove(self.ExpandedParts, i)
-        end
-    end
+    self.Store[part] = nil
 end
 
 function Hitbox:ResetAll()
-    for _, data in ipairs(self.ExpandedParts) do
-        self:ResetPart(data)
+    for part in pairs(self.Store) do
+        self:Reset(part)
     end
-    self.ExpandedParts = {}
+    table.clear(self.Store)
 end
 
-function Hitbox:Update()
-    if self.Settings.enabled then
-        self:ApplyHitboxExpansion()
-    else
-        self:ResetAll()
+function Hitbox:Apply()
+    if not self.Settings.enabled then return end
+    local mult = math.max(1, self.Settings.size)
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        local char = plr.Character
+        if not char then continue end
+
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then continue end
+
+        for _, part in ipairs(self:Parts(char)) do
+            self:Expand(part, mult)
+        end
     end
+
+    for part in pairs(self.Store) do
+        if not part.Parent or not part.Parent.Parent then
+            self.Store[part] = nil
+        end
+    end
+end
+
+function Hitbox:HookPlayer(plr)
+    if plr == LocalPlayer then return end
+    local key = "char_" .. tostring(plr.UserId)
+
+    if self.Connections[key] then
+        self.Connections[key]:Disconnect()
+    end
+
+    self.Connections[key] = plr.CharacterAdded:Connect(function()
+        task.wait(0.35)
+        if self.Settings.enabled then
+            self:Apply()
+        end
+    end)
 end
 
 function Hitbox:Init()
-    print("[Hitbox] Initializing...")
-    
-    -- Запускаем цикл обновления
-    if self.Connections.update then
-        self.Connections.update:Disconnect()
-    end
-    
-    -- Слушаем добавление новых персонажей
-    if self.Connections.playerAdded then
-        self.Connections.playerAdded:Disconnect()
-    end
-    
-    if self.Connections.characterAdded then
-        for _, conn in pairs(self.Connections.characterAdded) do
-            conn:Disconnect()
-        end
-    end
-    self.Connections.characterAdded = {}
-    
-    -- Heartbeat для постоянного обновления
-    self.Connections.update = game:GetService("RunService").Heartbeat:Connect(function()
-        self:Update()
-    end)
-    
-    -- Обрабатываем новых игроков
-    for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
-        if player ~= game.Players.LocalPlayer then
-            self.Connections.characterAdded[player.UserId] = player.CharacterAdded:Connect(function(character)
-                task.wait(0.5) -- Даем время на загрузку персонажа
-                if self.Settings.enabled then
-                    self:ApplyHitboxExpansion()
-                end
-            end)
-        end
-    end
-    
-    -- Слушаем новых подключающихся игроков
-    self.Connections.playerAdded = game:GetService("Players").PlayerAdded:Connect(function(player)
-        if player ~= game.Players.LocalPlayer then
-            self.Connections.characterAdded[player.UserId] = player.CharacterAdded:Connect(function(character)
-                task.wait(0.5)
-                if self.Settings.enabled then
-                    self:ApplyHitboxExpansion()
-                end
-            end)
+    self:Destroy()
+
+    self.Connections.heartbeat = RunService.Heartbeat:Connect(function()
+        if self.Settings.enabled then
+            self:Apply()
+        else
+            self:ResetAll()
         end
     end)
-    
-    -- Применяем к текущим игрокам
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        self:HookPlayer(plr)
+    end
+
+    self.Connections.playerAdded = Players.PlayerAdded:Connect(function(plr)
+        self:HookPlayer(plr)
+    end)
+
     if self.Settings.enabled then
-        self:ApplyHitboxExpansion()
+        self:Apply()
     end
-    
-    print("[Hitbox] Initialized successfully")
 end
 
 function Hitbox:Destroy()
-    print("[Hitbox] Destroying...")
-    
     self:ResetAll()
-    
+    self.Settings.enabled = false
+
     for _, conn in pairs(self.Connections) do
-        if type(conn) == "table" then
-            -- Это таблица characterAdded connections
-            for _, subConn in pairs(conn) do
-                if subConn and subConn.Disconnect then
-                    subConn:Disconnect()
-                end
-            end
-        elseif conn and conn.Disconnect then
+        if typeof(conn) == "RBXScriptConnection" then
             conn:Disconnect()
         end
     end
-    
-    self.Connections = {}
-    
-    print("[Hitbox] Destroyed successfully")
+    table.clear(self.Connections)
 end
 
 return Hitbox
