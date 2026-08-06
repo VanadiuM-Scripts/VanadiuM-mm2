@@ -21,19 +21,23 @@ function Hitbox:GetPlayerParts(player)
 end
 
 function Hitbox:ExpandPart(part, sizeMultiplier)
-    if not part then return end
+    if not part or not part:IsA("BasePart") then return end
     
     local originalSize = part.Size
+    local originalCFrame = part.CFrame
     local newSize = originalSize * sizeMultiplier
     
     -- Сохраняем оригинальный размер и CFrame для возврата
+    local prevNetworkOwner = part:GetNetworkOwner()
     part:SetNetworkOwner(nil)
     part.Size = newSize
+    part.CFrame = originalCFrame
     
     return {
         part = part,
         originalSize = originalSize,
-        originalCFrame = part.CFrame,
+        originalCFrame = originalCFrame,
+        prevNetworkOwner = prevNetworkOwner,
     }
 end
 
@@ -42,7 +46,10 @@ function Hitbox:ResetPart(partData)
         local part = partData.part
         part.Size = partData.originalSize
         part.CFrame = partData.originalCFrame
-        part:SetNetworkOwner(game.Players.LocalPlayer)
+        -- Возвращаем сетевого владельца, если был
+        if partData.prevNetworkOwner then
+            part:SetNetworkOwner(partData.prevNetworkOwner)
+        end
     end
 end
 
