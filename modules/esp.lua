@@ -63,8 +63,18 @@ function ESP:GetPlayerColor(player, role)
     return roleColors[role] or Color3.fromRGB(255, 255, 255)
 end
 
-function ESP:GetScreenPosition(part)
-    local screenPoint, onScreen = game.Workspace.CurrentCamera:WorldToViewportPoint(part.Position)
+function ESP:GetScreenPosition(position)
+    local camera = game.Workspace.CurrentCamera
+    if not camera then
+        return Vector2.new(0, 0), false
+    end
+    
+    local pos = position
+    if typeof(position) ~= "Vector3" then
+        pos = position.Position
+    end
+    
+    local screenPoint, onScreen = camera:WorldToViewportPoint(pos)
     return Vector2.new(screenPoint.X, screenPoint.Y), onScreen
 end
 
@@ -168,11 +178,15 @@ function ESP:Draw3DBox(position, size, color)
 end
 
 function ESP:DrawLine(x1, y1, x2, y2, thickness, color)
+    local parent = ESP:GetUIParent()
+    if not parent then return end
+    
     local Line = Instance.new("Frame")
     Line.AnchorPoint = Vector2.new(0.5, 0.5)
     Line.BackgroundColor3 = color
     Line.BorderSizePixel = 0
-    Line.Parent = ESP:GetUIParent()
+    Line.ZIndex = 10
+    Line.Parent = parent
     
     local dx = x2 - x1
     local dy = y2 - y1
@@ -180,8 +194,8 @@ function ESP:DrawLine(x1, y1, x2, y2, thickness, color)
     
     if length > 0 then
         Line.Size = UDim2.new(0, length, 0, thickness)
-        Line.Position = UDim2.new(0, x1, 0, y1)
-        Line.Rotation = math.atan2(dy, dx) * 180 / math.pi
+        Line.Position = UDim2.new(0, (x1 + x2) / 2, 0, (y1 + y2) / 2)
+        Line.Rotation = math.deg(math.atan2(dy, dx))
     else
         Line.Size = UDim2.new(0, 1, 0, thickness)
         Line.Position = UDim2.new(0, x1, 0, y1)
@@ -209,28 +223,47 @@ function ESP:DrawRoleText(position, role, color)
     local screenPos, onScreen = ESP:GetScreenPosition(position)
     if not onScreen then return end
     
+    local parent = ESP:GetUIParent()
+    if not parent then return end
+    
     local Text = Instance.new("TextLabel")
     Text.AnchorPoint = Vector2.new(0.5, 0.5)
     Text.Text = role
     Text.TextColor3 = color
     Text.TextSize = 14
+    Text.Font = Enum.Font.SourceSansBold
+    Text.TextStrokeTransparency = 0.5
     Text.BackgroundTransparency = 1
+    Text.Size = UDim2.new(0, 100, 0, 20)
     Text.Position = UDim2.new(0, screenPos.X, 0, screenPos.Y + 30)
-    Text.Parent = ESP:GetUIParent()
+    Text.ZIndex = 10
+    Text.Parent = parent
     table.insert(ESP.Objects, Text)
     
     return Text
 end
 
 function ESP:GetUIParent()
-    local parent = game:GetService("Players").LocalPlayer:FindFirstChild("PlayerGui")
-    if not parent then
-        parent = Instance.new("ScreenGui")
-        parent.Name = "VanadiuM_ESP"
-        parent.ResetOnSpawn = false
-        parent.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    local localPlayer = game:GetService("Players").LocalPlayer
+    if not localPlayer then return nil end
+    
+    local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then
+        playerGui = localPlayer:WaitForChild("PlayerGui", 5)
     end
-    return parent
+    
+    if not playerGui then return nil end
+    
+    local espGui = playerGui:FindFirstChild("VanadiuM_ESP")
+    if not espGui then
+        espGui = Instance.new("ScreenGui")
+        espGui.Name = "VanadiuM_ESP"
+        espGui.ResetOnSpawn = false
+        espGui.IgnoreGuiInset = true
+        espGui.Parent = playerGui
+    end
+    
+    return espGui
 end
 
 function ESP:Update()
@@ -287,13 +320,14 @@ function ESP:DrawSkeleton(hrp, color)
     local char = hrp.Parent
     if not char then return end
     
-    -- Get body parts
+    -- Get body parts (supports both R6 and R15)
     local head = char:FindFirstChild("Head")
-    local leftArm = char:FindFirstChild("LeftArm")
-    local rightArm = char:FindFirstChild("RightArm")
-    local leftLeg = char:FindFirstChild("LeftLeg")
-    local rightLeg = char:FindFirstChild("RightLeg")
-    local torso = char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso") or char:FindFirstChild("LowerTorso")
+    local leftArm = char:FindFirstChild("LeftUpperArm") or char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftArm")
+    local rightArm = char:FindFirstChild("RightUpperArm") or char:FindFirstChild("Right Arm") or char:FindFirstChild("RightArm")
+    local leftLeg = char:FindFirstChild("LeftUpperLeg") or char:FindFirstChild("Left Leg") or char:FindFirstChild("LeftLeg")
+    local rightLeg = char:FindFirstChild("RightUpperLeg") or char:FindFirstChild("Right Leg") or char:FindFirstChild("RightLeg")
+    local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+    local lowerTorso = char:FindFirstChild("LowerTorso")
     
     if not torso then return end
     
@@ -309,32 +343,50 @@ function ESP:DrawSkeleton(hrp, color)
     end
     
     -- Connect body parts
-    if head then
+    if head and torso then
         drawBone(head, torso)
     end
     
-    if leftArm then
+    if leftArm and torso then
         drawBone(torso, leftArm)
-        local leftHand = char:FindFirstChild("LeftHand")
-        if leftHand then drawBone(leftArm, leftHand) end
+        local leftLowerArm = char:FindFirstChild("LeftLowerArm") or char:FindFirstChild("LeftHand")
+        if leftLowerArm then drawBone(leftArm, leftLowerArm) end
     end
     
-    if rightArm then
+    if rightArm and torso then
         drawBone(torso, rightArm)
-        local rightHand = char:FindFirstChild("RightHand")
-        if rightHand then drawBone(rightArm, rightHand) end
+        local rightLowerArm = char:FindFirstChild("RightLowerArm") or char:FindFirstChild("RightHand")
+        if rightLowerArm then drawBone(rightArm, rightLowerArm) end
     end
     
+    -- Connect torso to lower body (R15)
+    if lowerTorso then
+        drawBone(torso, lowerTorso)
+        if leftLeg then
+            drawBone(lowerTorso, leftLeg)
+        end
+        if rightLeg then
+            drawBone(lowerTorso, rightLeg)
+        end
+    else
+        -- R6 style
+        if leftLeg and torso then
+            drawBone(torso, leftLeg)
+        end
+        if rightLeg and torso then
+            drawBone(torso, rightLeg)
+        end
+    end
+    
+    -- Connect legs to feet
     if leftLeg then
-        drawBone(torso, leftLeg)
-        local leftFoot = char:FindFirstChild("LeftFoot")
-        if leftFoot then drawBone(leftLeg, leftFoot) end
+        local leftLowerLeg = char:FindFirstChild("LeftLowerLeg") or char:FindFirstChild("LeftFoot")
+        if leftLowerLeg then drawBone(leftLeg, leftLowerLeg) end
     end
     
     if rightLeg then
-        drawBone(torso, rightLeg)
-        local rightFoot = char:FindFirstChild("RightFoot")
-        if rightFoot then drawBone(rightLeg, rightFoot) end
+        local rightLowerLeg = char:FindFirstChild("RightLowerLeg") or char:FindFirstChild("RightFoot")
+        if rightLowerLeg then drawBone(rightLeg, rightLowerLeg) end
     end
 end
 
