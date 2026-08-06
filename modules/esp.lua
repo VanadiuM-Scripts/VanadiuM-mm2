@@ -172,16 +172,22 @@ function ESP:DrawLine(x1, y1, x2, y2, thickness, color)
     Line.AnchorPoint = Vector2.new(0.5, 0.5)
     Line.BackgroundColor3 = color
     Line.BorderSizePixel = 0
-    Line.Size = UDim2.new(0, math.abs(x2 - x1), 0, thickness)
-    Line.Position = UDim2.new(0, x1, 0, y1)
+    Line.Parent = ESP:GetUIParent()
     
-    -- Rotate if vertical
-    if x2 ~= x1 then
-        local angle = math.atan2(y2 - y1, x2 - x1) * 180 / math.pi
-        Line.Rotation = angle - 90
+    local dx = x2 - x1
+    local dy = y2 - y1
+    local length = math.sqrt(dx * dx + dy * dy)
+    
+    if length > 0 then
+        Line.Size = UDim2.new(0, length, 0, thickness)
+        Line.Position = UDim2.new(0, x1, 0, y1)
+        Line.Rotation = math.atan2(dy, dx) * 180 / math.pi
+    else
+        Line.Size = UDim2.new(0, 1, 0, thickness)
+        Line.Position = UDim2.new(0, x1, 0, y1)
+        Line.Rotation = 0
     end
     
-    Line.Parent = ESP:GetUIParent()
     table.insert(ESP.Objects, Line)
     
     return Line
