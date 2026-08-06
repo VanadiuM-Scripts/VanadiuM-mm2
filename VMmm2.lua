@@ -1,269 +1,293 @@
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua"))()
-local ThemeManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/addons/ThemeManager.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/addons/SaveManager.lua"))()
+local function httpGet(url)
+    local ok, res = pcall(function()
+        return game:HttpGet(url)
+    end)
+    if ok and res then return res end
+
+    if typeof(request) == "function" then
+        local r = request({ Url = url, Method = "GET" })
+        if r and r.Success and r.Body then
+            return r.Body
+        end
+    end
+    return nil
+end
+
+local function loadModule(name)
+    local candidates = {
+        "VanadiuM-mm2-fixed/modules/" .. name .. ".lua",
+        "VanadiuM-mm2/modules/" .. name .. ".lua",
+        "modules/" .. name .. ".lua",
+        name .. ".lua",
+    }
+
+    if typeof(isfile) == "function" and typeof(readfile) == "function" then
+        for _, path in ipairs(candidates) do
+            if isfile(path) then
+                local src = readfile(path)
+                local fn, err = loadstring(src)
+                if fn then
+                    local ok, mod = pcall(fn)
+                    if ok and mod then
+                        print("[VanadiuM] local module:", path)
+                        return mod
+                    end
+                else
+                    warn("[VanadiuM] compile error", path, err)
+                end
+            end
+        end
+    end
+
+    -- remote fallback (original repo — may be outdated)
+    local url = "https://raw.githubusercontent.com/VanadiuM-Scripts/VanadiuM-mm2/main/modules/" .. name .. ".lua"
+    local src = httpGet(url)
+    if src then
+        local fn = loadstring(src)
+        if fn then
+            local ok, mod = pcall(fn)
+            if ok and mod then
+                print("[VanadiuM] remote module:", name)
+                return mod
+            end
+        end
+    end
+
+    warn("[VanadiuM] failed to load module:", name)
+    return nil
+end
+
+-- UI
+local libSrc = httpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/Library.lua")
+local themeSrc = httpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/addons/ThemeManager.lua")
+local saveSrc = httpGet("https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/addons/SaveManager.lua")
+
+assert(libSrc and themeSrc and saveSrc, "[VanadiuM] failed to fetch LinoriaLib")
+
+local Library = loadstring(libSrc)()
+local ThemeManager = loadstring(themeSrc)()
+local SaveManager = loadstring(saveSrc)()
 
 local Window = Library:CreateWindow({
-    Title = "VanadiuM | mm2",
+    Title = "VanadiuM | mm2  (Potassium)",
     Center = true,
     AutoShow = true,
 })
 
--- Load modules
-local espModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/VanadiuM-Scripts/VanadiuM-mm2/refs/heads/main/modules/esp.lua"))()
-local aimbotModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/VanadiuM-Scripts/VanadiuM-mm2/refs/heads/main/modules/aimbot.lua"))()
-local hitboxModule = loadstring(game:HttpGet("https://raw.githubusercontent.com/VanadiuM-Scripts/VanadiuM-mm2/refs/heads/main/modules/hitbox.lua"))()
+local esp = loadModule("esp")
+local aimbot = loadModule("aimbot")
+local hitbox = loadModule("hitbox")
 
--- Initialize ESP module immediately so it starts updating
-espModule:Init()
-
-local FirstTab = Window:AddTab("Combat")
-local SecondTab = Window:AddTab("Visuals")
-local ThirdTab = Window:AddTab("Exploits")
-local FourthTab = Window:AddTab("Miscallenous")
-local FifthTab = Window:AddTab("Settings")
-
-local LeftGroup = FirstTab:AddLeftGroupbox("aimbot")
-local RightGroup = FirstTab:AddRightGroupbox("hitbox expander")
-
-local LeftTabbox = SecondTab:AddLeftTabbox("Visuals subtabs")
-local PlayerEspSubtab = LeftTabbox:AddTab("player")
-local OtherEspSubtab = LeftTabbox:AddTab("other")
-local WorldVisualsGroup = SecondTab:AddRightGroupbox("world")
-
-local MenuGroup = FifthTab:AddLeftGroupbox("Menu")
-
-local ExpLeftGroup = ThirdTab:AddLeftGroupbox("buy premium for this XD")
-local ExpRightGroup = ThirdTab:AddRightGroupbox("buy premium for this XD")
-
-local MiscLeftGroup = FourthTab:AddLeftGroupbox("player")
-local MiscRightGroup = FourthTab:AddRightGroupbox("other")
-
-local Options = {}
-
-OtherEspSubtab:AddToggle("Sheriff's gun", {
-	Text = "Sheriff's gun",
-	Default = false,
-
-	Callback = function(Value)
-		if Value == true then
-			print("Sheriff's gun ON")
-		end
-	end
-})
-
-WorldVisualsGroup:AddLabel("i add something to this tab")
-WorldVisualsGroup:AddLabel("on v1.1 or later")
-
--- ESP Settings
-Options.ESP = {
-    enabled = false,
-    box = false,
-    boxStyle = "2d",
-    skeleton = false,
-    tracer = false,
-    role = false,
-}
-
-PlayerEspSubtab:AddToggle("enabled", {
-    Text = "Enabled",
-    Default = false,
-    
-    Callback = function(Value)
-        Options.ESP.enabled = Value
-        espModule.Settings.enabled = Value
-    end
-})
-
-PlayerEspSubtab:AddToggle("box", {
-    Text = "box",
-    Default = false,
-    
-    Callback = function(Value)
-        Options.ESP.box = Value
-        espModule.Settings.box = Value
-    end
-})
-
-PlayerEspSubtab:AddDropdown("box style", {
-    Values = { "2d", "corner", "3d" },
-    Default = 1,
-    Multi = false,
-    Text = "box style",
-
-    Callback = function(Value)
-        local styles = {"2d", "corner", "3d"}
-        Options.ESP.boxStyle = styles[Value]
-        espModule.Settings.boxStyle = styles[Value]
-    end
-})
-
-PlayerEspSubtab:AddToggle("skeleton", {
-	Text = "skeleton",
-	Default = false,
-
-	Callback = function(Value)
-		Options.ESP.skeleton = Value
-		espModule.Settings.skeleton = Value
-	end
-})
-
-PlayerEspSubtab:AddToggle("role", {
-	Text = "role",
-	Default = false,
-
-	Callback = function(Value)
-	Options.ESP.role = Value
-	espModule.Settings.role = Value
+if not (esp and aimbot and hitbox) then
+    Library:Notify("Modules missing. Put fixed files in workspace (see README).", 10)
 end
-})
 
-PlayerEspSubtab:AddToggle("Tracer", {
-	Text = "Tracer",
-	Default = false,
-
-	Callback = function(Value)
-	Options.ESP.tracer = Value
-	espModule.Settings.tracer = Value
+if esp and esp.Init then
+    esp:Init()
 end
-})
 
--- Aimbot Settings
-Options.Aimbot = {
-    enabled = false,
-    teamCheck = true,
-    smoothness = 0,
-    showFOV = false,
-    fovRadius = 150,
-}
+------------------------------------------------------------
+-- Tabs
+------------------------------------------------------------
+local TabCombat = Window:AddTab("Combat")
+local TabVisuals = Window:AddTab("Visuals")
+local TabExploits = Window:AddTab("Exploits")
+local TabMisc = Window:AddTab("Misc")
+local TabSettings = Window:AddTab("Settings")
 
-LeftGroup:AddToggle("aimbot", {
-    Text = "enable",
-    Default = false,
-    Tooltip = "автонаводка",
+local AimGroup = TabCombat:AddLeftGroupbox("Aimbot")
+local HitGroup = TabCombat:AddRightGroupbox("Hitbox")
 
-    Callback = function(Value)
-        Options.Aimbot.enabled = Value
-        aimbotModule.Settings.enabled = Value
-        if Value then
-            aimbotModule:Init()
-        else
-            aimbotModule:Destroy()
-        end
-    end
-})
+local EspBox = TabVisuals:AddLeftTabbox("ESP")
+local EspPlayer = EspBox:AddTab("Player")
+local EspOther = EspBox:AddTab("Other")
+local WorldGroup = TabVisuals:AddRightGroupbox("World")
 
-LeftGroup:AddToggle("innocent check", {
-    Text = "Team check",
-    Default = false,
-    Tooltip = "не позволяет наводится на тимейтов",
+local ExpL = TabExploits:AddLeftGroupbox("Soon")
+local ExpR = TabExploits:AddRightGroupbox("Soon")
+local MiscL = TabMisc:AddLeftGroupbox("Player")
+local MiscR = TabMisc:AddRightGroupbox("Other")
+local MenuGroup = TabSettings:AddLeftGroupbox("Menu")
 
-    Callback = function(Value)
-        Options.Aimbot.teamCheck = Value
-        aimbotModule.Settings.teamCheck = Value
-    end
-})
+------------------------------------------------------------
+-- ESP UI
+------------------------------------------------------------
+if esp then
+    EspPlayer:AddToggle("esp_on", {
+        Text = "Enabled",
+        Default = false,
+        Callback = function(v)
+            esp.Settings.enabled = v
+        end,
+    })
 
-LeftGroup:AddSlider("smoothness", {
-    Text = "smoothness",
-    Default = 0,
-    Min = 0,
-    Max = 5,
-    Rounding = 0,
+    EspPlayer:AddToggle("esp_box", {
+        Text = "Box",
+        Default = false,
+        Callback = function(v)
+            esp.Settings.box = v
+        end,
+    })
 
-    Callback = function(Value)
-        Options.Aimbot.smoothness = Value
-        aimbotModule.Settings.smoothness = Value
-    end
-})
+    EspPlayer:AddDropdown("esp_boxstyle", {
+        Values = { "2d", "corner", "3d" },
+        Default = 1,
+        Multi = false,
+        Text = "Box style",
+        Callback = function(v)
+            if type(v) == "number" then
+                esp.Settings.boxStyle = ({ "2d", "corner", "3d" })[v] or "2d"
+            else
+                esp.Settings.boxStyle = v
+            end
+        end,
+    })
 
-LeftGroup:AddToggle("show FOV", {
-    Text = "show FOV",
-    Default = false,
-    Tooltip = "радиус действия аимбота",
+    EspPlayer:AddToggle("esp_skel", {
+        Text = "Skeleton",
+        Default = false,
+        Callback = function(v)
+            esp.Settings.skeleton = v
+        end,
+    })
 
-    Callback = function(Value)
-        Options.Aimbot.showFOV = Value
-        aimbotModule.Settings.showFOV = Value
-    end
-})
+    EspPlayer:AddToggle("esp_role", {
+        Text = "Role",
+        Default = false,
+        Callback = function(v)
+            esp.Settings.role = v
+        end,
+    })
 
-LeftGroup:AddSlider("FOV radius", {
-    Text = "FOV radius",
-    Default = 150,
-    Min = 10,
-    Max = 800,
-    Rounding = 0,
+    EspPlayer:AddToggle("esp_tracer", {
+        Text = "Tracer",
+        Default = false,
+        Callback = function(v)
+            esp.Settings.tracer = v
+        end,
+    })
+end
 
-    Callback = function(Value)
-        Options.Aimbot.fovRadius = Value
-        aimbotModule.Settings.fovRadius = Value
-    end
-})
+EspOther:AddLabel("Gun ESP — later")
+WorldGroup:AddLabel("World visuals — later")
 
--- Hitbox Settings
-Options.Hitbox = {
-    enabled = false,
-    size = 1,
-}
+------------------------------------------------------------
+-- Aimbot UI
+------------------------------------------------------------
+if aimbot then
+    AimGroup:AddToggle("aim_on", {
+        Text = "Enable",
+        Default = false,
+        Tooltip = "Camera aim at nearest in FOV",
+        Callback = function(v)
+            aimbot.Settings.enabled = v
+            if v then
+                aimbot:Init()
+            else
+                aimbot:Destroy()
+            end
+        end,
+    })
 
-RightGroup:AddToggle("hitbox expander", {
-    Text = "enable",
-    Default = false,
-    Tooltip = "увеличивает заданую часть тела",
+    AimGroup:AddToggle("aim_role", {
+        Text = "Role check",
+        Default = true,
+        Tooltip = "Skip same role (Knife/Gun)",
+        Callback = function(v)
+            aimbot.Settings.roleCheck = v
+        end,
+    })
 
-    Callback = function(Value)
-        Options.Hitbox.enabled = Value
-        hitboxModule.Settings.enabled = Value
-        if Value then
-            hitboxModule:Init()
-        else
-            hitboxModule:Destroy()
-        end
-    end
-})
+    AimGroup:AddSlider("aim_smooth", {
+        Text = "Smoothness",
+        Default = 0,
+        Min = 0,
+        Max = 10,
+        Rounding = 1,
+        Callback = function(v)
+            aimbot.Settings.smoothness = v
+        end,
+    })
 
-RightGroup:AddSlider("size", {
-    Text = "size",
-    Default = 1,
-    Min = 1,
-    Max = 20,
-    Rounding = 0,
+    AimGroup:AddToggle("aim_fov", {
+        Text = "Show FOV",
+        Default = false,
+        Callback = function(v)
+            aimbot.Settings.showFOV = v
+        end,
+    })
 
-    Callback = function(Value)
-        Options.Hitbox.size = Value
-        hitboxModule.Settings.size = Value
-    end
-})
+    AimGroup:AddSlider("aim_fov_r", {
+        Text = "FOV radius",
+        Default = 150,
+        Min = 20,
+        Max = 600,
+        Rounding = 0,
+        Callback = function(v)
+            aimbot.Settings.fovRadius = v
+        end,
+    })
+end
 
+------------------------------------------------------------
+-- Hitbox UI
+------------------------------------------------------------
+if hitbox then
+    HitGroup:AddToggle("hb_on", {
+        Text = "Enable",
+        Default = false,
+        Tooltip = "Client expand (server may ignore)",
+        Callback = function(v)
+            hitbox.Settings.enabled = v
+            if v then
+                hitbox:Init()
+            else
+                hitbox:Destroy()
+            end
+        end,
+    })
+
+    HitGroup:AddSlider("hb_size", {
+        Text = "Size ×",
+        Default = 2,
+        Min = 1,
+        Max = 15,
+        Rounding = 1,
+        Callback = function(v)
+            hitbox.Settings.size = v
+        end,
+    })
+end
+
+ExpL:AddLabel("Nothing yet")
+ExpR:AddLabel("buy premium for this XD")
+MiscL:AddLabel("Later")
+MiscR:AddLabel("Later")
+
+------------------------------------------------------------
+-- Menu
+------------------------------------------------------------
 MenuGroup:AddButton("Unload", function()
-    -- Cleanup modules
-    if aimbotModule.Destroy then aimbotModule:Destroy() end
-    if hitboxModule.Destroy then hitboxModule:Destroy() end
-    if espModule.Destroy then espModule:Destroy() end
+    if aimbot and aimbot.Destroy then aimbot:Destroy() end
+    if hitbox and hitbox.Destroy then hitbox:Destroy() end
+    if esp and esp.Destroy then esp:Destroy() end
     Library:Unload()
 end)
 
-MenuGroup:AddLabel("Menu keybind")
-    :AddKeyPicker("MenuKeybind", {
-        Default = "End",
-        NoUI = true,
-        Text = "Menu keybind"
-    })
+MenuGroup:AddLabel("Menu keybind"):AddKeyPicker("MenuKeybind", {
+    Default = "End",
+    NoUI = true,
+    Text = "Menu keybind",
+})
 
 Library.ToggleKeybind = Options.MenuKeybind
 
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
-
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({
-    "MenuKeybind"
-})
-
+SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 ThemeManager:SetFolder("VanadiuM")
 SaveManager:SetFolder("VanadiuM/MM2")
-
-SaveManager:BuildConfigSection(FifthTab)
-ThemeManager:ApplyToTab(FifthTab)
-
+SaveManager:BuildConfigSection(TabSettings)
+ThemeManager:ApplyToTab(TabSettings)
 SaveManager:LoadAutoloadConfig()
