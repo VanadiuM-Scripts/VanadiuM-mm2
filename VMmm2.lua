@@ -68,10 +68,12 @@ local aimbot = loadModule("aimbot")
 local hitbox = loadModule("hitbox")
 local movement = loadModule("movement")
 local misc = loadModule("misc")
+local farm = loadModule("farm")
 
 if esp and esp.Init then esp:Init() end
 if movement and movement.Init then movement:Init() end
 if misc and misc.Init then misc:Init() end
+if farm and farm.Init then farm:Init() end
 
 local TabCombat = Window:AddTab("Combat")
 local TabVisuals = Window:AddTab("Visuals")
@@ -131,9 +133,9 @@ if aimbot then
         Callback = function(v) aimbot.Settings.roleCheck = v end,
     })
     AimGroup:AddDropdown("aim_method", {
-        Values = { "mouse", "camera" }, Default = 1, Multi = false, Text = "Method",
+        Values = { "mouse", "camera", "both" }, Default = 1, Multi = false, Text = "Method",
         Callback = function(v)
-            if type(v) == "number" then aimbot.Settings.method = ({ "mouse", "camera" })[v] or "mouse"
+            if type(v) == "number" then aimbot.Settings.method = ({ "mouse", "camera", "both" })[v] or "mouse"
             else aimbot.Settings.method = v end
         end,
     })
@@ -212,6 +214,37 @@ if movement then
 end
 
 -- Misc
+if farm then
+    MiscL:AddToggle("farm_coins", {
+        Text = "Auto collect coins",
+        Default = false,
+        Callback = function(v)
+            farm.Settings.coins = v
+        end,
+    })
+    MiscL:AddDropdown("farm_method", {
+        Values = { "touch", "tween", "both" },
+        Default = 1,
+        Multi = false,
+        Text = "Coin method",
+        Callback = function(v)
+            if type(v) == "number" then
+                farm.Settings.method = ({ "touch", "tween", "both" })[v] or "touch"
+            else
+                farm.Settings.method = v
+            end
+        end,
+    })
+    MiscL:AddSlider("farm_speed", {
+        Text = "Tween speed",
+        Default = 80,
+        Min = 20,
+        Max = 200,
+        Rounding = 0,
+        Callback = function(v) farm.Settings.speed = v end,
+    })
+end
+
 if misc then
     MiscL:AddToggle("mc_afk", {
         Text = "Anti-AFK", Default = false,
@@ -237,6 +270,7 @@ MenuGroup:AddButton("Unload", function()
     if esp and esp.Destroy then esp:Destroy() end
     if movement and movement.Destroy then movement:Destroy() end
     if misc and misc.Destroy then misc:Destroy() end
+    if farm and farm.Destroy then farm:Destroy() end
     Library:Unload()
 end)
 
