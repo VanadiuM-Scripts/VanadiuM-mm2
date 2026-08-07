@@ -14,38 +14,59 @@ World.Settings = {
     clockTime = 14,
 
     skyEnabled = false,
-    skyId = "default", -- default | nebula | sunset | night | custom
-    customSkyTx = "",
+    skyId = "default",
 
     trailEnabled = false,
     trailColor = Color3.fromRGB(255, 255, 255),
+    trailLifetime = 0.6,
+    trailWidth = 1,
 
     chinaHat = false,
     chinaHatColor = Color3.fromRGB(255, 255, 255),
+    chinaHatSize = 1.2,
+    chinaHatHeight = 0.85,
+    chinaHatTransparency = 0.1,
+    chinaHatMaterial = "SmoothPlastic", -- SmoothPlastic | Neon | ForceField
+
+    auraEnabled = false,
+    auraColor = Color3.fromRGB(120, 200, 255),
+    auraSize = 4,
+    auraTransparency = 0.6,
+    auraType = "highlight", -- highlight | ring | both
+
+    aspectEnabled = false,
+    aspectRatio = 1.333, -- width/height modifier via FOV trick + letterbox feel
 
     bloomEnabled = false,
     bloomIntensity = 1,
     bloomSize = 24,
+    bloomThreshold = 0.8,
 
     ccEnabled = false,
     ccBrightness = 0,
     ccContrast = 0,
     ccSaturation = 0,
+    ccTint = Color3.fromRGB(255, 255, 255),
 
     atmosphereEnabled = false,
     atmosphereDensity = 0.3,
+    atmosphereHaze = 1.5,
 
     crosshair = false,
     crosshairColor = Color3.fromRGB(255, 255, 255),
     crosshairSize = 8,
+    crosshairGap = 3,
+    crosshairThickness = 1.5,
 }
 
 World.Backup = {}
 World.Connections = {}
 World.Trail = nil
 World.Hat = nil
+World.AuraParts = {}
+World.AuraHighlight = nil
 World.Cross = {}
-World.Effects = {} -- Bloom, ColorCorrection, Atmosphere we create
+World.Effects = {}
 
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
@@ -53,7 +74,7 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local SKYBOX = {
-    default = nil, -- restore original
+    default = nil,
     nebula = {
         SkyboxBk = "rbxassetid://159454299",
         SkyboxDn = "rbxassetid://159454296",
@@ -80,6 +101,13 @@ local SKYBOX = {
     },
 }
 
+local MATERIALS = {
+    SmoothPlastic = Enum.Material.SmoothPlastic,
+    Neon = Enum.Material.Neon,
+    ForceField = Enum.Material.ForceField,
+    Glass = Enum.Material.Glass,
+}
+
 local function char()
     return LocalPlayer.Character
 end
@@ -104,8 +132,7 @@ function World:SaveLighting()
         FogStart = Lighting.FogStart,
         FogEnd = Lighting.FogEnd,
         ClockTime = Lighting.ClockTime,
-        Brightness = Lighting.Brightness,
-        Sky = Lighting:FindFirstChildOfClass("Sky"),
+        FieldOfView = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView or 70,
     }
 end
 
@@ -142,12 +169,10 @@ end
 function World:ApplySky()
     local id = self.Settings.skyId
     if not self.Settings.skyEnabled or id == "default" then
-        -- remove our sky if any, don't destroy game's original if we cached instance
         local sky = Lighting:FindFirstChild("VanadiuM_Sky")
         if sky then sky:Destroy() end
         return
     end
-
     local preset = SKYBOX[id]
     local sky = Lighting:FindFirstChild("VanadiuM_Sky")
     if not sky then
@@ -155,35 +180,20 @@ function World:ApplySky()
         sky.Name = "VanadiuM_Sky"
         sky.Parent = Lighting
     end
-
     if preset then
         for prop, val in pairs(preset) do
             pcall(function() sky[prop] = val end)
-        end
-    elseif id == "custom" and self.Settings.customSkyTx ~= "" then
-        local tx = self.Settings.customSkyTx
-        if not string.find(tx, "rbxassetid://") then
-            tx = "rbxassetid://" .. tx
-        end
-        for _, prop in ipairs({ "SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp" }) do
-            pcall(function() sky[prop] = tx end)
         end
     end
 end
 
 function World:ClearTrail()
-    if self.Trail then
-        pcall(function() self.Trail:Destroy() end)
-        self.Trail = nil
-    end
+    if self.Trail then pcall(function() self.Trail:Destroy() end) self.Trail = nil end
     local c = char()
-    if c then
-        local t = c:FindFirstChild("VanadiuM_Trail")
-        if t then pcall(function() t:Destroy() end) end
-        local a0 = c:FindFirstChild("VanadiuM_TrailA0")
-        local a1 = c:FindFirstChild("VanadiuM_TrailA1")
-        if a0 then pcall(function() a0:Destroy() end) end
-        if a1 then pcall(function() a1:Destroy() end) end
+    if not c then return end
+    for _, n in ipairs({ "VanadiuM_Trail", "VanadiuM_TrailA0", "VanadiuM_TrailA1" }) do
+        local o = c:FindFirstChild(n, true)
+        if o then pcall(function() o:Destroy() end) end
     end
 end
 
@@ -196,39 +206,34 @@ function World:ApplyTrail()
     if not root then return end
     if self.Trail and self.Trail.Parent then
         self.Trail.Color = ColorSequence.new(self.Settings.trailColor)
+        self.Trail.Lifetime = self.Settings.trailLifetime
         return
     end
     self:ClearTrail()
-
     local a0 = Instance.new("Attachment")
     a0.Name = "VanadiuM_TrailA0"
-    a0.Position = Vector3.new(0, 0.5, 0)
+    a0.Position = Vector3.new(0, 0.5 * self.Settings.trailWidth, 0)
     a0.Parent = root
-
     local a1 = Instance.new("Attachment")
     a1.Name = "VanadiuM_TrailA1"
-    a1.Position = Vector3.new(0, -0.5, 0)
+    a1.Position = Vector3.new(0, -0.5 * self.Settings.trailWidth, 0)
     a1.Parent = root
-
     local trail = Instance.new("Trail")
     trail.Name = "VanadiuM_Trail"
     trail.Attachment0 = a0
     trail.Attachment1 = a1
-    trail.Lifetime = 0.6
+    trail.Lifetime = self.Settings.trailLifetime
     trail.MinLength = 0.05
     trail.FaceCamera = true
     trail.Color = ColorSequence.new(self.Settings.trailColor)
-    trail.Transparency = NumberSequence.new(0.2, 1)
+    trail.Transparency = NumberSequence.new(0.15, 1)
     trail.WidthScale = NumberSequence.new(1, 0)
     trail.Parent = root
     self.Trail = trail
 end
 
 function World:ClearHat()
-    if self.Hat then
-        pcall(function() self.Hat:Destroy() end)
-        self.Hat = nil
-    end
+    if self.Hat then pcall(function() self.Hat:Destroy() end) self.Hat = nil end
     local h = head()
     if h then
         local old = h:FindFirstChild("VanadiuM_ChinaHat")
@@ -243,37 +248,158 @@ function World:ApplyChinaHat()
     end
     local h = head()
     if not h then return end
+
+    local scale = self.Settings.chinaHatSize
+    local height = self.Settings.chinaHatHeight
+    local mat = MATERIALS[self.Settings.chinaHatMaterial] or Enum.Material.SmoothPlastic
+
     if self.Hat and self.Hat.Parent == h then
         self.Hat.Color = self.Settings.chinaHatColor
+        self.Hat.Transparency = self.Settings.chinaHatTransparency
+        self.Hat.Material = mat
+        local mesh = self.Hat:FindFirstChildOfClass("SpecialMesh")
+        if mesh then mesh.Scale = Vector3.new(scale, scale * 0.9, scale) end
+        -- keep weld; offset via CFrame on hat if needed
         return
     end
-    self:ClearHat()
 
+    self:ClearHat()
     local hat = Instance.new("Part")
     hat.Name = "VanadiuM_ChinaHat"
-    hat.Size = Vector3.new(0.15, 1.2, 1.2)
+    hat.Size = Vector3.new(0.2, 1, 1)
     hat.Anchored = false
     hat.CanCollide = false
     hat.Massless = true
-    hat.Material = Enum.Material.SmoothPlastic
+    hat.Material = mat
     hat.Color = self.Settings.chinaHatColor
+    hat.Transparency = self.Settings.chinaHatTransparency
     hat.CastShadow = false
 
     local mesh = Instance.new("SpecialMesh")
     mesh.MeshType = Enum.MeshType.FileMesh
-    mesh.MeshId = "rbxassetid://1778999" -- classic cone-ish; fallback cylinder if fails
-    mesh.Scale = Vector3.new(1.2, 1.1, 1.2)
+    mesh.MeshId = "rbxassetid://1778999"
+    mesh.Scale = Vector3.new(scale, scale * 0.9, scale)
     mesh.Parent = hat
 
-    hat.CFrame = h.CFrame * CFrame.new(0, 0.85, 0)
+    hat.CFrame = h.CFrame * CFrame.new(0, height, 0)
     hat.Parent = h
 
-    local weld = Instance.new("WeldConstraint")
+    local weld = Instance.new("Weld")
     weld.Part0 = h
     weld.Part1 = hat
+    weld.C0 = CFrame.new(0, height, 0)
     weld.Parent = hat
 
     self.Hat = hat
+end
+
+function World:ClearAura()
+    if self.AuraHighlight then
+        pcall(function() self.AuraHighlight:Destroy() end)
+        self.AuraHighlight = nil
+    end
+    for _, p in ipairs(self.AuraParts) do
+        pcall(function() p:Destroy() end)
+    end
+    table.clear(self.AuraParts)
+    local c = char()
+    if c then
+        local old = c:FindFirstChild("VanadiuM_Aura")
+        if old then pcall(function() old:Destroy() end) end
+        local hl = c:FindFirstChild("VanadiuM_AuraHL")
+        if hl then pcall(function() hl:Destroy() end) end
+    end
+end
+
+function World:ApplyAura()
+    if not self.Settings.auraEnabled then
+        self:ClearAura()
+        return
+    end
+    local c = char()
+    local root = hrp()
+    if not c or not root then return end
+
+    local typ = self.Settings.auraType
+    local col = self.Settings.auraColor
+    local size = self.Settings.auraSize
+    local trans = self.Settings.auraTransparency
+
+    -- Highlight
+    if typ == "highlight" or typ == "both" then
+        local hl = self.AuraHighlight
+        if not hl or not hl.Parent then
+            hl = Instance.new("Highlight")
+            hl.Name = "VanadiuM_AuraHL"
+            hl.FillTransparency = math.clamp(trans + 0.2, 0, 1)
+            hl.OutlineTransparency = math.clamp(trans - 0.2, 0, 1)
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.Parent = c
+            self.AuraHighlight = hl
+        end
+        hl.FillColor = col
+        hl.OutlineColor = col
+        hl.FillTransparency = math.clamp(trans + 0.15, 0, 1)
+        hl.OutlineTransparency = math.clamp(trans * 0.5, 0, 1)
+        hl.Adornee = c
+    elseif self.AuraHighlight then
+        pcall(function() self.AuraHighlight:Destroy() end)
+        self.AuraHighlight = nil
+    end
+
+    -- Ring under feet
+    if typ == "ring" or typ == "both" then
+        local ring = self.AuraParts[1]
+        if not ring or not ring.Parent then
+            self:ClearAura()
+            -- re-add highlight if both
+            if typ == "both" then
+                local hl = Instance.new("Highlight")
+                hl.Name = "VanadiuM_AuraHL"
+                hl.Parent = c
+                self.AuraHighlight = hl
+            end
+            ring = Instance.new("Part")
+            ring.Name = "VanadiuM_Aura"
+            ring.Anchored = false
+            ring.CanCollide = false
+            ring.Massless = true
+            ring.Material = Enum.Material.Neon
+            ring.Shape = Enum.PartType.Cylinder
+            ring.Size = Vector3.new(0.15, size, size)
+            ring.Transparency = trans
+            ring.Color = col
+            ring.CastShadow = false
+            ring.Parent = root
+            local weld = Instance.new("Weld")
+            weld.Part0 = root
+            weld.Part1 = ring
+            weld.C0 = CFrame.new(0, -2.8, 0) * CFrame.Angles(0, 0, math.rad(90))
+            weld.Parent = ring
+            self.AuraParts[1] = ring
+        else
+            ring.Size = Vector3.new(0.15, size, size)
+            ring.Transparency = trans
+            ring.Color = col
+        end
+    else
+        for _, p in ipairs(self.AuraParts) do
+            pcall(function() p:Destroy() end)
+        end
+        table.clear(self.AuraParts)
+    end
+end
+
+function World:ApplyAspect()
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    if self.Settings.aspectEnabled then
+        -- approximate ultrawide / stretched feel via FOV scale
+        local base = self.Backup.FieldOfView or 70
+        local r = self.Settings.aspectRatio
+        -- higher ratio → wider feel → slightly higher FOV
+        cam.FieldOfView = math.clamp(base * (0.75 + r * 0.35), 50, 120)
+    end
 end
 
 function World:GetOrCreateEffect(className, name)
@@ -283,7 +409,6 @@ function World:GetOrCreateEffect(className, name)
     local fx = Instance.new(className)
     fx.Name = name
     fx.Parent = Lighting
-    self.Effects[name] = fx
     return fx
 end
 
@@ -297,7 +422,7 @@ function World:ApplyBloom()
     local bloom = self:GetOrCreateEffect("BloomEffect", name)
     bloom.Intensity = self.Settings.bloomIntensity
     bloom.Size = self.Settings.bloomSize
-    bloom.Threshold = 0.8
+    bloom.Threshold = self.Settings.bloomThreshold
     bloom.Enabled = true
 end
 
@@ -312,6 +437,7 @@ function World:ApplyCC()
     cc.Brightness = self.Settings.ccBrightness
     cc.Contrast = self.Settings.ccContrast
     cc.Saturation = self.Settings.ccSaturation
+    cc.TintColor = self.Settings.ccTint
     cc.Enabled = true
 end
 
@@ -328,7 +454,7 @@ function World:ApplyAtmosphere()
     at.Color = Color3.fromRGB(200, 200, 220)
     at.Decay = Color3.fromRGB(100, 100, 120)
     at.Glare = 0.2
-    at.Haze = 1.5
+    at.Haze = self.Settings.atmosphereHaze
 end
 
 function World:ClearCrosshair()
@@ -348,28 +474,32 @@ function World:ApplyCrosshair()
     if not cam then return end
     local c = cam.ViewportSize / 2
     local s = self.Settings.crosshairSize
+    local g = self.Settings.crosshairGap
     local col = self.Settings.crosshairColor
+    local th = self.Settings.crosshairThickness
 
-    if #self.Cross < 2 then
+    if #self.Cross < 4 then
         self:ClearCrosshair()
-        for i = 1, 2 do
+        for _ = 1, 4 do
             local l = Drawing.new("Line")
-            l.Thickness = 1.5
+            l.Thickness = th
             l.Transparency = 1
             l.ZIndex = 20
             l.Visible = true
             table.insert(self.Cross, l)
         end
     end
-    local h, v = self.Cross[1], self.Cross[2]
-    h.From = Vector2.new(c.X - s, c.Y)
-    h.To = Vector2.new(c.X + s, c.Y)
-    h.Color = col
-    h.Visible = true
-    v.From = Vector2.new(c.X, c.Y - s)
-    v.To = Vector2.new(c.X, c.Y + s)
-    v.Color = col
-    v.Visible = true
+    -- left, right, up, down (with gap)
+    local L, R, U, D = self.Cross[1], self.Cross[2], self.Cross[3], self.Cross[4]
+    L.From = Vector2.new(c.X - g - s, c.Y); L.To = Vector2.new(c.X - g, c.Y)
+    R.From = Vector2.new(c.X + g, c.Y); R.To = Vector2.new(c.X + g + s, c.Y)
+    U.From = Vector2.new(c.X, c.Y - g - s); U.To = Vector2.new(c.X, c.Y - g)
+    D.From = Vector2.new(c.X, c.Y + g); D.To = Vector2.new(c.X, c.Y + g + s)
+    for _, line in ipairs(self.Cross) do
+        line.Color = col
+        line.Thickness = th
+        line.Visible = true
+    end
 end
 
 function World:Tick()
@@ -379,6 +509,8 @@ function World:Tick()
     self:ApplySky()
     self:ApplyTrail()
     self:ApplyChinaHat()
+    self:ApplyAura()
+    self:ApplyAspect()
     self:ApplyBloom()
     self:ApplyCC()
     self:ApplyAtmosphere()
@@ -388,44 +520,31 @@ end
 function World:Init()
     self:Destroy()
     self:SaveLighting()
-
     self.Connections.step = RunService.RenderStepped:Connect(function()
         self:Tick()
     end)
-
     self.Connections.char = LocalPlayer.CharacterAdded:Connect(function()
         task.wait(0.4)
         self:ClearTrail()
         self:ClearHat()
+        self:ClearAura()
         self.Trail = nil
         self.Hat = nil
     end)
 end
 
 function World:Destroy()
-    -- disable flags
-    self.Settings.ambientEnabled = false
-    self.Settings.fogEnabled = false
-    self.Settings.timeEnabled = false
-    self.Settings.skyEnabled = false
-    self.Settings.trailEnabled = false
-    self.Settings.chinaHat = false
-    self.Settings.bloomEnabled = false
-    self.Settings.ccEnabled = false
-    self.Settings.atmosphereEnabled = false
-    self.Settings.crosshair = false
-
+    for k, v in pairs(self.Settings) do
+        if type(v) == "boolean" then self.Settings[k] = false end
+    end
     self:ClearTrail()
     self:ClearHat()
+    self:ClearAura()
     self:ClearCrosshair()
-
-    local sky = Lighting:FindFirstChild("VanadiuM_Sky")
-    if sky then sky:Destroy() end
-    for _, name in ipairs({ "VanadiuM_Bloom", "VanadiuM_CC", "VanadiuM_Atmosphere" }) do
+    for _, name in ipairs({ "VanadiuM_Sky", "VanadiuM_Bloom", "VanadiuM_CC", "VanadiuM_Atmosphere" }) do
         local fx = Lighting:FindFirstChild(name)
         if fx then fx:Destroy() end
     end
-
     if self.Backup.saved then
         pcall(function()
             Lighting.Ambient = self.Backup.Ambient
@@ -434,9 +553,11 @@ function World:Destroy()
             Lighting.FogStart = self.Backup.FogStart
             Lighting.FogEnd = self.Backup.FogEnd
             Lighting.ClockTime = self.Backup.ClockTime
+            if workspace.CurrentCamera and self.Backup.FieldOfView then
+                workspace.CurrentCamera.FieldOfView = self.Backup.FieldOfView
+            end
         end)
     end
-
     for _, c in pairs(self.Connections) do
         if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
     end
