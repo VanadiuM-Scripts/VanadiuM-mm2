@@ -2,10 +2,10 @@ local Hitbox = {}
 
 Hitbox.Settings = {
     enabled = false,
-    size = 50,              -- absolute size (like _G.HeadSize)
+    size = 50,
     showVisual = true,
     visualTransparency = 0.7,
-    part = "HumanoidRootPart", -- HumanoidRootPart | Head | both
+    part = "HumanoidRootPart",
 }
 
 Hitbox.Connections = {}
@@ -115,7 +115,6 @@ function Hitbox:Apply()
             if hrp then table.insert(targets, hrp) end
             if head then table.insert(targets, head) end
         else
-            -- default HumanoidRootPart
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if hrp then table.insert(targets, hrp) end
         end
@@ -129,17 +128,7 @@ function Hitbox:Apply()
     end
 end
 
-function Hitbox:Init()
-    self:Destroy()
-
-    -- same idea as the source: every RenderStepped force size
-    self.Connections.render = RunService.RenderStepped:Connect(function()
-        self:Apply()
-    end)
-end
-
-function Hitbox:Destroy()
-    self.Settings.enabled = false
+function Hitbox:Cleanup()
     self:ClearDrawings()
     for _, c in pairs(self.Connections) do
         if typeof(c) == "RBXScriptConnection" then
@@ -147,6 +136,18 @@ function Hitbox:Destroy()
         end
     end
     table.clear(self.Connections)
+end
+
+function Hitbox:Init()
+    self:Cleanup() -- do NOT set enabled = false
+    self.Connections.render = RunService.RenderStepped:Connect(function()
+        self:Apply()
+    end)
+end
+
+function Hitbox:Destroy()
+    self.Settings.enabled = false
+    self:Cleanup()
 end
 
 return Hitbox
