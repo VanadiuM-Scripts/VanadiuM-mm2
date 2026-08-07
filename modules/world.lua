@@ -38,9 +38,6 @@ World.Settings = {
     auraTransparency = 0.6,
     auraType = "highlight", -- highlight | ring | both
 
-    aspectEnabled = false,
-    aspectRatio = 0.75, -- <1 = vertical stretch (classic 4:3 stretch look), 1 = normal
-
     bloomEnabled = false,
     bloomIntensity = 1,
     bloomSize = 24,
@@ -136,7 +133,6 @@ function World:SaveLighting()
         FogStart = Lighting.FogStart,
         FogEnd = Lighting.FogEnd,
         ClockTime = Lighting.ClockTime,
-        FieldOfView = workspace.CurrentCamera and workspace.CurrentCamera.FieldOfView or 70,
     }
 end
 
@@ -256,24 +252,20 @@ function World:ApplyChinaHat()
     local sx = self.Settings.chinaHatSizeX or 1.2
     local sy = self.Settings.chinaHatSizeY or 1.1
     local sz = self.Settings.chinaHatSizeZ or 1.2
-    local ox = self.Settings.chinaHatPosX or 0
-    local oy = self.Settings.chinaHatPosY or 0.85
-    local oz = self.Settings.chinaHatPosZ or 0
+    local px = self.Settings.chinaHatPosX or 0
+    local py = self.Settings.chinaHatPosY or 0.85
+    local pz = self.Settings.chinaHatPosZ or 0
     local mat = MATERIALS[self.Settings.chinaHatMaterial] or Enum.Material.SmoothPlastic
-    local offset = CFrame.new(ox, oy, oz)
+    local offset = CFrame.new(px, py, pz)
 
     if self.Hat and self.Hat.Parent == h then
         self.Hat.Color = self.Settings.chinaHatColor
         self.Hat.Transparency = self.Settings.chinaHatTransparency
         self.Hat.Material = mat
         local mesh = self.Hat:FindFirstChildOfClass("SpecialMesh")
-        if mesh then
-            mesh.Scale = Vector3.new(sx, sy, sz)
-        end
+        if mesh then mesh.Scale = Vector3.new(sx, sy, sz) end
         local weld = self.Hat:FindFirstChildOfClass("Weld")
-        if weld then
-            weld.C0 = offset
-        end
+        if weld then weld.C0 = offset end
         return
     end
 
@@ -295,6 +287,7 @@ function World:ApplyChinaHat()
     mesh.Scale = Vector3.new(sx, sy, sz)
     mesh.Parent = hat
 
+    hat.CFrame = h.CFrame * offset
     hat.Parent = h
 
     local weld = Instance.new("Weld")
@@ -404,23 +397,6 @@ function World:ApplyAura()
 end
 
 -- Screen stretch: scale camera rotation matrix after CameraModule
-function World:ApplyAspect()
-    if not self.Settings.aspectEnabled then return end
-    local cam = workspace.CurrentCamera
-    if not cam then return end
-
-    local s = tonumber(self.Settings.aspectRatio) or 1
-    if math.abs(s - 1) < 0.001 then return end
-
-    -- GetComponents → scale vertical axis of rotation (classic stretched-res look)
-    local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cam.CFrame:GetComponents()
-    cam.CFrame = CFrame.new(
-        x, y, z,
-        r00, r01 * s, r02,
-        r10, r11 * s, r12,
-        r20, r21 * s, r22
-    )
-end
 
 function World:GetOrCreateEffect(className, name)
     local existing = Lighting:FindFirstChild(name)
@@ -530,7 +506,6 @@ function World:Tick()
     self:ApplyTrail()
     self:ApplyChinaHat()
     self:ApplyAura()
-    -- aspect via BindToRenderStep
     self:ApplyBloom()
     self:ApplyCC()
     self:ApplyAtmosphere()
@@ -542,13 +517,6 @@ function World:Init()
     self:SaveLighting()
     self.Connections.step = RunService.RenderStepped:Connect(function()
         self:Tick()
-    end)
-    -- Aspect must run AFTER CameraModule
-    pcall(function()
-        RunService:BindToRenderStep("VanadiuM_Aspect", Enum.RenderPriority.Camera.Value + 10, function()
-            -- aspect via BindToRenderStep
-        end)
-        self.Connections.aspectBound = true
     end)
     self.Connections.char = LocalPlayer.CharacterAdded:Connect(function()
         task.wait(0.4)
@@ -580,14 +548,7 @@ function World:Destroy()
             Lighting.FogStart = self.Backup.FogStart
             Lighting.FogEnd = self.Backup.FogEnd
             Lighting.ClockTime = self.Backup.ClockTime
-            if workspace.CurrentCamera and self.Backup.FieldOfView then
-                workspace.CurrentCamera.FieldOfView = self.Backup.FieldOfView
-            end
         end)
-    end
-    if self.Connections.aspectBound then
-        pcall(function() RunService:UnbindFromRenderStep("VanadiuM_Aspect") end)
-        self.Connections.aspectBound = nil
     end
     for _, c in pairs(self.Connections) do
         if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
