@@ -188,8 +188,12 @@ if world then
 
     WPlayer:AddToggle("w_hat", { Text = "China hat", Default = false, Callback = function(v) world.Settings.chinaHat = v end })
     WPlayer:AddLabel("Hat color"):AddColorPicker("w_hat_col", { Default = Color3.fromRGB(255,255,255), Callback = function(c) world.Settings.chinaHatColor = c end })
-    WPlayer:AddSlider("w_hat_size", { Text = "Hat size", Default = 1.2, Min = 0.4, Max = 3, Rounding = 1, Callback = function(v) world.Settings.chinaHatSize = v end })
-    WPlayer:AddSlider("w_hat_h", { Text = "Hat height", Default = 0.85, Min = 0.3, Max = 2.5, Rounding = 2, Callback = function(v) world.Settings.chinaHatHeight = v end })
+    WPlayer:AddSlider("w_hat_sx", { Text = "Hat width (X)", Default = 1.2, Min = 0.2, Max = 4, Rounding = 2, Callback = function(v) world.Settings.chinaHatSizeX = v end })
+    WPlayer:AddSlider("w_hat_sy", { Text = "Hat height (Y)", Default = 1.1, Min = 0.2, Max = 4, Rounding = 2, Callback = function(v) world.Settings.chinaHatSizeY = v end })
+    WPlayer:AddSlider("w_hat_sz", { Text = "Hat length (Z)", Default = 1.2, Min = 0.2, Max = 4, Rounding = 2, Callback = function(v) world.Settings.chinaHatSizeZ = v end })
+    WPlayer:AddSlider("w_hat_px", { Text = "Pos X", Default = 0, Min = -3, Max = 3, Rounding = 2, Callback = function(v) world.Settings.chinaHatPosX = v end })
+    WPlayer:AddSlider("w_hat_py", { Text = "Pos Y", Default = 0.85, Min = -2, Max = 4, Rounding = 2, Callback = function(v) world.Settings.chinaHatPosY = v end })
+    WPlayer:AddSlider("w_hat_pz", { Text = "Pos Z", Default = 0, Min = -3, Max = 3, Rounding = 2, Callback = function(v) world.Settings.chinaHatPosZ = v end })
     WPlayer:AddSlider("w_hat_tr", { Text = "Hat transparency", Default = 0.1, Min = 0, Max = 0.9, Rounding = 2, Callback = function(v) world.Settings.chinaHatTransparency = v end })
     WPlayer:AddDropdown("w_hat_mat", {
         Values = { "SmoothPlastic", "Neon", "ForceField", "Glass" }, Default = 1, Multi = false, Text = "Hat material",
@@ -214,6 +218,7 @@ if world then
 
     WAura:AddToggle("w_aspect", { Text = "Aspect ratio (stretch)", Default = false, Callback = function(v) world.Settings.aspectEnabled = v end })
     WAura:AddSlider("w_aspect_r", { Text = "Stretch amount", Default = 0.75, Min = 0.4, Max = 1.5, Rounding = 2, Callback = function(v) world.Settings.aspectRatio = v end })
+    WAura:AddLabel("<1 = stretched (taller)")
 else
     WLighting:AddLabel("world module not loaded")
 end
