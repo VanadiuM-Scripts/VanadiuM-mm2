@@ -23,10 +23,14 @@ World.Settings = {
 
     chinaHat = false,
     chinaHatColor = Color3.fromRGB(255, 255, 255),
-    chinaHatSize = 1.2,
-    chinaHatHeight = 0.85,
+    chinaHatSizeX = 1.2,   -- width
+    chinaHatSizeY = 1.1,   -- height of mesh
+    chinaHatSizeZ = 1.2,   -- length/depth
+    chinaHatPosX = 0,
+    chinaHatPosY = 0.85,
+    chinaHatPosZ = 0,
     chinaHatTransparency = 0.1,
-    chinaHatMaterial = "SmoothPlastic", -- SmoothPlastic | Neon | ForceField
+    chinaHatMaterial = "SmoothPlastic",
 
     auraEnabled = false,
     auraColor = Color3.fromRGB(120, 200, 255),
@@ -249,17 +253,27 @@ function World:ApplyChinaHat()
     local h = head()
     if not h then return end
 
-    local scale = self.Settings.chinaHatSize
-    local height = self.Settings.chinaHatHeight
+    local sx = self.Settings.chinaHatSizeX or 1.2
+    local sy = self.Settings.chinaHatSizeY or 1.1
+    local sz = self.Settings.chinaHatSizeZ or 1.2
+    local ox = self.Settings.chinaHatPosX or 0
+    local oy = self.Settings.chinaHatPosY or 0.85
+    local oz = self.Settings.chinaHatPosZ or 0
     local mat = MATERIALS[self.Settings.chinaHatMaterial] or Enum.Material.SmoothPlastic
+    local offset = CFrame.new(ox, oy, oz)
 
     if self.Hat and self.Hat.Parent == h then
         self.Hat.Color = self.Settings.chinaHatColor
         self.Hat.Transparency = self.Settings.chinaHatTransparency
         self.Hat.Material = mat
         local mesh = self.Hat:FindFirstChildOfClass("SpecialMesh")
-        if mesh then mesh.Scale = Vector3.new(scale, scale * 0.9, scale) end
-        -- keep weld; offset via CFrame on hat if needed
+        if mesh then
+            mesh.Scale = Vector3.new(sx, sy, sz)
+        end
+        local weld = self.Hat:FindFirstChildOfClass("Weld")
+        if weld then
+            weld.C0 = offset
+        end
         return
     end
 
@@ -278,16 +292,15 @@ function World:ApplyChinaHat()
     local mesh = Instance.new("SpecialMesh")
     mesh.MeshType = Enum.MeshType.FileMesh
     mesh.MeshId = "rbxassetid://1778999"
-    mesh.Scale = Vector3.new(scale, scale * 0.9, scale)
+    mesh.Scale = Vector3.new(sx, sy, sz)
     mesh.Parent = hat
 
-    hat.CFrame = h.CFrame * CFrame.new(0, height, 0)
     hat.Parent = h
 
     local weld = Instance.new("Weld")
     weld.Part0 = h
     weld.Part1 = hat
-    weld.C0 = CFrame.new(0, height, 0)
+    weld.C0 = offset
     weld.Parent = hat
 
     self.Hat = hat
@@ -390,17 +403,23 @@ function World:ApplyAura()
     end
 end
 
--- Real view stretch via non-uniform CFrame scale (not FOV)
--- Applied AFTER default camera so it sticks for the frame
+-- Screen stretch: scale camera rotation matrix after CameraModule
 function World:ApplyAspect()
     if not self.Settings.aspectEnabled then return end
     local cam = workspace.CurrentCamera
     if not cam then return end
-    local s = self.Settings.aspectRatio
-    if not s or s == 1 then return end
-    -- s < 1 → stretch vertical (characters look thinner/taller - classic stretched res)
-    -- s > 1 → squash vertical
-    cam.CFrame = cam.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, s, 0, 0, 0, 1)
+
+    local s = tonumber(self.Settings.aspectRatio) or 1
+    if math.abs(s - 1) < 0.001 then return end
+
+    -- GetComponents → scale vertical axis of rotation (classic stretched-res look)
+    local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cam.CFrame:GetComponents()
+    cam.CFrame = CFrame.new(
+        x, y, z,
+        r00, r01 * s, r02,
+        r10, r11 * s, r12,
+        r20, r21 * s, r22
+    )
 end
 
 function World:GetOrCreateEffect(className, name)
@@ -526,7 +545,7 @@ function World:Init()
     end)
     -- Aspect must run AFTER CameraModule
     pcall(function()
-        RunService:BindToRenderStep("VanadiuM_Aspect", Enum.RenderPriority.Camera.Value + 1, function()
+        RunService:BindToRenderStep("VanadiuM_Aspect", Enum.RenderPriority.Camera.Value + 10, function()
             -- aspect via BindToRenderStep
         end)
         self.Connections.aspectBound = true
