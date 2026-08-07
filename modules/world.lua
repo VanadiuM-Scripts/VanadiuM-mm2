@@ -1,3 +1,8 @@
+--[[
+    VanadiuM World Visuals — Potassium
+    Ambient, fog, time, sky, trail, china hat, CC, bloom, etc.
+]]
+
 local World = {}
 
 World.Settings = {

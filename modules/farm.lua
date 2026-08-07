@@ -1,3 +1,8 @@
+--[[
+    VanadiuM Farm — Potassium
+    Auto collect MM2 coins
+]]
+
 local Farm = {}
 
 Farm.Settings = {
