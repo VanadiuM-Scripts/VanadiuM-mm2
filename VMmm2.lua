@@ -108,7 +108,7 @@ local EspItems = EspBox:AddTab("Items")
 local WLighting = TabWorld:AddLeftGroupbox("Lighting")
 local WEffects = TabWorld:AddRightGroupbox("Effects")
 local WPlayer = TabWorld:AddLeftGroupbox("Player FX")
-local WAura = TabWorld:AddRightGroupbox("Aura / Aspect")
+local WAura = TabWorld:AddRightGroupbox("Aura")
 
 local MoveL = TabMove:AddLeftGroupbox("Speed / Fly")
 local MoveR = TabMove:AddRightGroupbox("Noclip")
@@ -203,7 +203,7 @@ if world then
         end,
     })
 
-    -- Aura / Aspect
+    -- Aura
     WAura:AddToggle("w_aura", { Text = "Aura", Default = false, Callback = function(v) world.Settings.auraEnabled = v end })
     WAura:AddLabel("Aura color"):AddColorPicker("w_aura_col", { Default = Color3.fromRGB(120,200,255), Callback = function(c) world.Settings.auraColor = c end })
     WAura:AddDropdown("w_aura_type", {
@@ -215,10 +215,6 @@ if world then
     })
     WAura:AddSlider("w_aura_size", { Text = "Ring size", Default = 4, Min = 2, Max = 12, Rounding = 1, Callback = function(v) world.Settings.auraSize = v end })
     WAura:AddSlider("w_aura_tr", { Text = "Aura transparency", Default = 0.6, Min = 0, Max = 0.95, Rounding = 2, Callback = function(v) world.Settings.auraTransparency = v end })
-
-    WAura:AddToggle("w_aspect", { Text = "Aspect ratio (stretch)", Default = false, Callback = function(v) world.Settings.aspectEnabled = v end })
-    WAura:AddSlider("w_aspect_r", { Text = "Stretch amount", Default = 0.75, Min = 0.4, Max = 1.5, Rounding = 2, Callback = function(v) world.Settings.aspectRatio = v end })
-    WAura:AddLabel("<1 = stretched (taller)")
 else
     WLighting:AddLabel("world module not loaded")
 end
