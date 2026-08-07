@@ -35,7 +35,7 @@ World.Settings = {
     auraType = "highlight", -- highlight | ring | both
 
     aspectEnabled = false,
-    aspectRatio = 1.333, -- width/height modifier via FOV trick + letterbox feel
+    aspectRatio = 0.75, -- <1 = vertical stretch (classic 4:3 stretch look), 1 = normal
 
     bloomEnabled = false,
     bloomIntensity = 1,
@@ -390,16 +390,17 @@ function World:ApplyAura()
     end
 end
 
+-- Real view stretch via non-uniform CFrame scale (not FOV)
+-- Applied AFTER default camera so it sticks for the frame
 function World:ApplyAspect()
+    if not self.Settings.aspectEnabled then return end
     local cam = workspace.CurrentCamera
     if not cam then return end
-    if self.Settings.aspectEnabled then
-        -- approximate ultrawide / stretched feel via FOV scale
-        local base = self.Backup.FieldOfView or 70
-        local r = self.Settings.aspectRatio
-        -- higher ratio → wider feel → slightly higher FOV
-        cam.FieldOfView = math.clamp(base * (0.75 + r * 0.35), 50, 120)
-    end
+    local s = self.Settings.aspectRatio
+    if not s or s == 1 then return end
+    -- s < 1 → stretch vertical (characters look thinner/taller - classic stretched res)
+    -- s > 1 → squash vertical
+    cam.CFrame = cam.CFrame * CFrame.new(0, 0, 0, 1, 0, 0, 0, s, 0, 0, 0, 1)
 end
 
 function World:GetOrCreateEffect(className, name)
@@ -510,7 +511,7 @@ function World:Tick()
     self:ApplyTrail()
     self:ApplyChinaHat()
     self:ApplyAura()
-    self:ApplyAspect()
+    -- aspect via BindToRenderStep
     self:ApplyBloom()
     self:ApplyCC()
     self:ApplyAtmosphere()
@@ -522,6 +523,13 @@ function World:Init()
     self:SaveLighting()
     self.Connections.step = RunService.RenderStepped:Connect(function()
         self:Tick()
+    end)
+    -- Aspect must run AFTER CameraModule
+    pcall(function()
+        RunService:BindToRenderStep("VanadiuM_Aspect", Enum.RenderPriority.Camera.Value + 1, function()
+            -- aspect via BindToRenderStep
+        end)
+        self.Connections.aspectBound = true
     end)
     self.Connections.char = LocalPlayer.CharacterAdded:Connect(function()
         task.wait(0.4)
@@ -557,6 +565,10 @@ function World:Destroy()
                 workspace.CurrentCamera.FieldOfView = self.Backup.FieldOfView
             end
         end)
+    end
+    if self.Connections.aspectBound then
+        pcall(function() RunService:UnbindFromRenderStep("VanadiuM_Aspect") end)
+        self.Connections.aspectBound = nil
     end
     for _, c in pairs(self.Connections) do
         if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
