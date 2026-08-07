@@ -26,6 +26,7 @@ local function loadModule(name)
                         print("[VanadiuM] local:", path)
                         return mod
                     end
+                    warn("[VanadiuM] run error", name, mod)
                 else
                     warn("[VanadiuM] compile", path, err)
                 end
@@ -35,13 +36,16 @@ local function loadModule(name)
     local url = "https://raw.githubusercontent.com/VanadiuM-Scripts/VanadiuM-mm2/main/modules/" .. name .. ".lua"
     local src = httpGet(url)
     if src then
-        local fn = loadstring(src)
+        local fn, err = loadstring(src)
         if fn then
             local ok, mod = pcall(fn)
             if ok and mod then
                 print("[VanadiuM] remote:", name)
                 return mod
             end
+            warn("[VanadiuM] remote run error", name, mod)
+        else
+            warn("[VanadiuM] remote compile", name, err)
         end
     end
     warn("[VanadiuM] missing module:", name)
@@ -77,9 +81,28 @@ if misc and misc.Init then misc:Init() end
 if farm and farm.Init then farm:Init() end
 if world and world.Init then world:Init() end
 
+-- notify missing
+do
+    local missing = {}
+    for name, mod in pairs({
+        esp = esp, aimbot = aimbot, hitbox = hitbox,
+        movement = movement, misc = misc, farm = farm, world = world,
+    }) do
+        if not mod then table.insert(missing, name) end
+    end
+    if #missing > 0 then
+        Library:Notify("Modules missing: " .. table.concat(missing, ", ") .. " — upload them to GitHub/modules/", 10)
+    end
+end
+
+------------------------------------------------------------
+-- Tabs
+------------------------------------------------------------
 local TabCombat = Window:AddTab("Combat")
 local TabVisuals = Window:AddTab("Visuals")
+local TabWorld = Window:AddTab("World")
 local TabMove = Window:AddTab("Movement")
+local TabFarm = Window:AddTab("Farm")
 local TabMisc = Window:AddTab("Misc")
 local TabSettings = Window:AddTab("Settings")
 
@@ -88,79 +111,116 @@ local HitGroup = TabCombat:AddRightGroupbox("Hitbox")
 
 local EspBox = TabVisuals:AddLeftTabbox("ESP")
 local EspPlayer = EspBox:AddTab("Player")
-local EspWorld = EspBox:AddTab("World")
-local WorldGroup = TabVisuals:AddRightGroupbox("Info")
+local EspItems = EspBox:AddTab("Items")
+
+local WLighting = TabWorld:AddLeftGroupbox("Lighting")
+local WEffects = TabWorld:AddRightGroupbox("Effects")
+local WPlayer = TabWorld:AddLeftGroupbox("Player FX")
 
 local MoveL = TabMove:AddLeftGroupbox("Speed / Fly")
 local MoveR = TabMove:AddRightGroupbox("Noclip")
+
+local FarmGroup = TabFarm:AddLeftGroupbox("Coins")
+local FarmInfo = TabFarm:AddRightGroupbox("Info")
+
 local MiscL = TabMisc:AddLeftGroupbox("Utilities")
 local MiscR = TabMisc:AddRightGroupbox("Camera")
 local MenuGroup = TabSettings:AddLeftGroupbox("Menu")
 
+------------------------------------------------------------
 -- ESP
+------------------------------------------------------------
 if esp then
-    EspPlayer:AddToggle("esp_on", { Text = "Enabled", Default = false, Callback = function(v) esp.Settings.enabled = v end })
-    EspPlayer:AddToggle("esp_box", { Text = "Box (fit body)", Default = false, Callback = function(v) esp.Settings.box = v end })
+    EspPlayer:AddToggle("esp_on", {
+        Text = "Enabled", Default = false,
+        Callback = function(v) esp.Settings.enabled = v end,
+    })
+    EspPlayer:AddToggle("esp_box", {
+        Text = "Box (body parts)", Default = false,
+        Callback = function(v) esp.Settings.box = v end,
+    })
     EspPlayer:AddDropdown("esp_style", {
         Values = { "2d", "corner", "3d" }, Default = 1, Multi = false, Text = "Box style",
         Callback = function(v)
-            if type(v) == "number" then esp.Settings.boxStyle = ({ "2d", "corner", "3d" })[v] or "2d"
-            else esp.Settings.boxStyle = v end
+            if type(v) == "number" then
+                esp.Settings.boxStyle = ({ "2d", "corner", "3d" })[v] or "2d"
+            else
+                esp.Settings.boxStyle = v
+            end
         end,
     })
-    EspPlayer:AddToggle("esp_skel", { Text = "Skeleton", Default = false, Callback = function(v) esp.Settings.skeleton = v end })
-    EspPlayer:AddToggle("esp_role", { Text = "Role", Default = false, Callback = function(v) esp.Settings.role = v end })
-    EspPlayer:AddToggle("esp_tracer", { Text = "Tracer", Default = false, Callback = function(v) esp.Settings.tracer = v end })
-    EspWorld:AddToggle("esp_coins", { Text = "Coins ESP", Default = false, Callback = function(v) esp.Settings.coins = v end })
-    EspWorld:AddToggle("esp_gun", { Text = "Dropped gun ESP", Default = false, Callback = function(v) esp.Settings.gun = v end })
+    EspPlayer:AddToggle("esp_skel", {
+        Text = "Skeleton", Default = false,
+        Callback = function(v) esp.Settings.skeleton = v end,
+    })
+    EspPlayer:AddToggle("esp_role", {
+        Text = "Role", Default = false,
+        Callback = function(v) esp.Settings.role = v end,
+    })
+    EspPlayer:AddToggle("esp_tracer", {
+        Text = "Tracer", Default = false,
+        Callback = function(v) esp.Settings.tracer = v end,
+    })
+    EspItems:AddToggle("esp_coins", {
+        Text = "Coins ESP", Default = false,
+        Callback = function(v) esp.Settings.coins = v end,
+    })
+    EspItems:AddToggle("esp_gun", {
+        Text = "Dropped gun ESP", Default = false,
+        Callback = function(v) esp.Settings.gun = v end,
+    })
+else
+    EspPlayer:AddLabel("esp module not loaded")
+end
 
-
+------------------------------------------------------------
+-- WORLD VISUALS (own tab)
+------------------------------------------------------------
 if world then
-    -- Other / world style
-    EspOther:AddToggle("w_ambient", {
+    WLighting:AddToggle("w_ambient", {
         Text = "Custom ambient", Default = false,
         Callback = function(v) world.Settings.ambientEnabled = v end,
     })
-    EspOther:AddLabel("Ambient color"):AddColorPicker("w_amb_col", {
+    WLighting:AddLabel("Ambient"):AddColorPicker("w_amb_col", {
         Default = Color3.fromRGB(128, 128, 128),
         Callback = function(c) world.Settings.ambient = c end,
     })
-    EspOther:AddLabel("Outdoor ambient"):AddColorPicker("w_out_col", {
+    WLighting:AddLabel("Outdoor"):AddColorPicker("w_out_col", {
         Default = Color3.fromRGB(128, 128, 128),
         Callback = function(c) world.Settings.outdoorAmbient = c end,
     })
 
-    EspOther:AddToggle("w_fog", {
+    WLighting:AddToggle("w_fog", {
         Text = "Fog", Default = false,
         Callback = function(v) world.Settings.fogEnabled = v end,
     })
-    EspOther:AddLabel("Fog color"):AddColorPicker("w_fog_col", {
+    WLighting:AddLabel("Fog color"):AddColorPicker("w_fog_col", {
         Default = Color3.fromRGB(192, 192, 192),
         Callback = function(c) world.Settings.fogColor = c end,
     })
-    EspOther:AddSlider("w_fog_start", {
+    WLighting:AddSlider("w_fog_start", {
         Text = "Fog start", Default = 0, Min = 0, Max = 500, Rounding = 0,
         Callback = function(v) world.Settings.fogStart = v end,
     })
-    EspOther:AddSlider("w_fog_end", {
+    WLighting:AddSlider("w_fog_end", {
         Text = "Fog end", Default = 1000, Min = 50, Max = 5000, Rounding = 0,
         Callback = function(v) world.Settings.fogEnd = v end,
     })
 
-    EspOther:AddToggle("w_time", {
+    WLighting:AddToggle("w_time", {
         Text = "Custom time", Default = false,
         Callback = function(v) world.Settings.timeEnabled = v end,
     })
-    EspOther:AddSlider("w_clock", {
-        Text = "Clock time", Default = 14, Min = 0, Max = 24, Rounding = 1,
+    WLighting:AddSlider("w_clock", {
+        Text = "Clock (0-24)", Default = 14, Min = 0, Max = 24, Rounding = 1,
         Callback = function(v) world.Settings.clockTime = v end,
     })
 
-    EspOther:AddToggle("w_sky", {
+    WLighting:AddToggle("w_sky", {
         Text = "Custom sky", Default = false,
         Callback = function(v) world.Settings.skyEnabled = v end,
     })
-    EspOther:AddDropdown("w_sky_id", {
+    WLighting:AddDropdown("w_sky_id", {
         Values = { "default", "nebula", "sunset", "night" },
         Default = 1, Multi = false, Text = "Sky preset",
         Callback = function(v)
@@ -172,73 +232,74 @@ if world then
         end,
     })
 
-    WorldGroup:AddToggle("w_trail", {
-        Text = "Trail", Default = false,
-        Callback = function(v) world.Settings.trailEnabled = v end,
-    })
-    WorldGroup:AddLabel("Trail color"):AddColorPicker("w_trail_col", {
-        Default = Color3.fromRGB(255, 255, 255),
-        Callback = function(c) world.Settings.trailColor = c end,
-    })
-
-    WorldGroup:AddToggle("w_hat", {
-        Text = "China hat", Default = false,
-        Callback = function(v) world.Settings.chinaHat = v end,
-    })
-    WorldGroup:AddLabel("Hat color"):AddColorPicker("w_hat_col", {
-        Default = Color3.fromRGB(255, 255, 255),
-        Callback = function(c) world.Settings.chinaHatColor = c end,
-    })
-
-    WorldGroup:AddToggle("w_bloom", {
+    WEffects:AddToggle("w_bloom", {
         Text = "Bloom", Default = false,
         Callback = function(v) world.Settings.bloomEnabled = v end,
     })
-    WorldGroup:AddSlider("w_bloom_i", {
+    WEffects:AddSlider("w_bloom_i", {
         Text = "Bloom intensity", Default = 1, Min = 0, Max = 5, Rounding = 1,
         Callback = function(v) world.Settings.bloomIntensity = v end,
     })
 
-    WorldGroup:AddToggle("w_cc", {
+    WEffects:AddToggle("w_cc", {
         Text = "Color correction", Default = false,
         Callback = function(v) world.Settings.ccEnabled = v end,
     })
-    WorldGroup:AddSlider("w_cc_sat", {
+    WEffects:AddSlider("w_cc_sat", {
         Text = "Saturation", Default = 0, Min = -1, Max = 1, Rounding = 2,
         Callback = function(v) world.Settings.ccSaturation = v end,
     })
-    WorldGroup:AddSlider("w_cc_con", {
+    WEffects:AddSlider("w_cc_con", {
         Text = "Contrast", Default = 0, Min = -1, Max = 1, Rounding = 2,
         Callback = function(v) world.Settings.ccContrast = v end,
     })
 
-    WorldGroup:AddToggle("w_atmo", {
+    WEffects:AddToggle("w_atmo", {
         Text = "Atmosphere", Default = false,
         Callback = function(v) world.Settings.atmosphereEnabled = v end,
     })
-    WorldGroup:AddSlider("w_atmo_d", {
+    WEffects:AddSlider("w_atmo_d", {
         Text = "Density", Default = 0.3, Min = 0, Max = 1, Rounding = 2,
         Callback = function(v) world.Settings.atmosphereDensity = v end,
     })
 
-    WorldGroup:AddToggle("w_cross", {
+    WEffects:AddToggle("w_cross", {
         Text = "Crosshair", Default = false,
         Callback = function(v) world.Settings.crosshair = v end,
     })
-    WorldGroup:AddLabel("Crosshair color"):AddColorPicker("w_cross_col", {
+    WEffects:AddLabel("Crosshair"):AddColorPicker("w_cross_col", {
         Default = Color3.fromRGB(255, 255, 255),
         Callback = function(c) world.Settings.crosshairColor = c end,
     })
+
+    WPlayer:AddToggle("w_trail", {
+        Text = "Trail", Default = false,
+        Callback = function(v) world.Settings.trailEnabled = v end,
+    })
+    WPlayer:AddLabel("Trail color"):AddColorPicker("w_trail_col", {
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(c) world.Settings.trailColor = c end,
+    })
+
+    WPlayer:AddToggle("w_hat", {
+        Text = "China hat", Default = false,
+        Callback = function(v) world.Settings.chinaHat = v end,
+    })
+    WPlayer:AddLabel("Hat color"):AddColorPicker("w_hat_col", {
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(c) world.Settings.chinaHatColor = c end,
+    })
+else
+    WLighting:AddLabel("world module not loaded")
+    WLighting:AddLabel("upload modules/world.lua")
 end
 
-WorldGroup:AddLabel("VanadiuM world visuals")
-
-end
-
--- Aimbot
+------------------------------------------------------------
+-- AIMBOT
+------------------------------------------------------------
 if aimbot then
     AimGroup:AddToggle("aim_on", {
-        Text = "Enable", Default = false, Tooltip = "Hold RMB to aim",
+        Text = "Enable", Default = false,
         Callback = function(v)
             aimbot.Settings.enabled = v
             if v then aimbot:Init() else aimbot:Destroy() end
@@ -255,8 +316,11 @@ if aimbot then
     AimGroup:AddDropdown("aim_method", {
         Values = { "mouse", "camera", "both" }, Default = 1, Multi = false, Text = "Method",
         Callback = function(v)
-            if type(v) == "number" then aimbot.Settings.method = ({ "mouse", "camera", "both" })[v] or "mouse"
-            else aimbot.Settings.method = v end
+            if type(v) == "number" then
+                aimbot.Settings.method = ({ "mouse", "camera", "both" })[v] or "mouse"
+            else
+                aimbot.Settings.method = v
+            end
         end,
     })
     AimGroup:AddSlider("aim_smooth", {
@@ -271,12 +335,16 @@ if aimbot then
         Text = "FOV radius", Default = 180, Min = 30, Max = 600, Rounding = 0,
         Callback = function(v) aimbot.Settings.fovRadius = v end,
     })
+else
+    AimGroup:AddLabel("aimbot module not loaded")
 end
 
--- Hitbox
+------------------------------------------------------------
+-- HITBOX
+------------------------------------------------------------
 if hitbox then
     HitGroup:AddToggle("hb_on", {
-        Text = "Enable", Default = false, Tooltip = "Client expand + visual",
+        Text = "Enable", Default = false,
         Callback = function(v)
             hitbox.Settings.enabled = v
             if v then hitbox:Init() else hitbox:Destroy() end
@@ -304,9 +372,13 @@ if hitbox then
         Text = "Visual transparency", Default = 0.7, Min = 0.2, Max = 0.9, Rounding = 2,
         Callback = function(v) hitbox.Settings.visualTransparency = v end,
     })
+else
+    HitGroup:AddLabel("hitbox module not loaded")
 end
 
--- Movement
+------------------------------------------------------------
+-- MOVEMENT
+------------------------------------------------------------
 if movement then
     MoveL:AddToggle("mv_speed", {
         Text = "Speed", Default = false,
@@ -331,22 +403,20 @@ if movement then
         Text = "Noclip", Default = false,
         Callback = function(v) movement.Settings.noclipEnabled = v end,
     })
+else
+    MoveL:AddLabel("movement module not loaded")
 end
 
--- Misc
+------------------------------------------------------------
+-- FARM (own tab)
+------------------------------------------------------------
 if farm then
-    MiscL:AddToggle("farm_coins", {
-        Text = "Auto collect coins",
-        Default = false,
-        Callback = function(v)
-            farm.Settings.coins = v
-        end,
+    FarmGroup:AddToggle("farm_coins", {
+        Text = "Auto collect coins", Default = false,
+        Callback = function(v) farm.Settings.coins = v end,
     })
-    MiscL:AddDropdown("farm_method", {
-        Values = { "touch", "tween", "both" },
-        Default = 1,
-        Multi = false,
-        Text = "Coin method",
+    FarmGroup:AddDropdown("farm_method", {
+        Values = { "touch", "tween", "both" }, Default = 1, Multi = false, Text = "Method",
         Callback = function(v)
             if type(v) == "number" then
                 farm.Settings.method = ({ "touch", "tween", "both" })[v] or "touch"
@@ -355,16 +425,25 @@ if farm then
             end
         end,
     })
-    MiscL:AddSlider("farm_speed", {
-        Text = "Tween speed",
-        Default = 80,
-        Min = 20,
-        Max = 200,
-        Rounding = 0,
+    FarmGroup:AddSlider("farm_speed", {
+        Text = "Tween speed", Default = 80, Min = 20, Max = 200, Rounding = 0,
         Callback = function(v) farm.Settings.speed = v end,
     })
+    FarmGroup:AddSlider("farm_dist", {
+        Text = "Max distance", Default = 500, Min = 50, Max = 2000, Rounding = 0,
+        Callback = function(v) farm.Settings.maxDist = v end,
+    })
+    FarmInfo:AddLabel("touch = firetouchinterest")
+    FarmInfo:AddLabel("tween = fly to coin")
+    FarmInfo:AddLabel("both = tween + touch")
+else
+    FarmGroup:AddLabel("farm module not loaded")
+    FarmGroup:AddLabel("upload modules/farm.lua")
 end
 
+------------------------------------------------------------
+-- MISC
+------------------------------------------------------------
 if misc then
     MiscL:AddToggle("mc_afk", {
         Text = "Anti-AFK", Default = false,
@@ -382,8 +461,13 @@ if misc then
         Text = "FOV value", Default = 90, Min = 50, Max = 120, Rounding = 0,
         Callback = function(v) misc.Settings.fovValue = v end,
     })
+else
+    MiscL:AddLabel("misc module not loaded")
 end
 
+------------------------------------------------------------
+-- MENU
+------------------------------------------------------------
 MenuGroup:AddButton("Unload", function()
     if aimbot and aimbot.Destroy then aimbot:Destroy() end
     if hitbox and hitbox.Destroy then hitbox:Destroy() end
