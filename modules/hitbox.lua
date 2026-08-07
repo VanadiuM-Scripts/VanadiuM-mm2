@@ -5,9 +5,11 @@ Hitbox.Settings = {
     size = 50,
     showVisual = true,
     visualTransparency = 0.7,
-    part = "HumanoidRootPart",
+    part = "HumanoidRootPart", -- HumanoidRootPart | Head | both
 }
 
+-- [BasePart] = original props
+Hitbox.Originals = {}
 Hitbox.Connections = {}
 Hitbox.Drawings = {}
 
@@ -17,6 +19,51 @@ local LocalPlayer = Players.LocalPlayer
 
 local function hasDrawing()
     return typeof(Drawing) == "table" and typeof(Drawing.new) == "function"
+end
+
+local function snapshot(part)
+    if Hitbox.Originals[part] then return Hitbox.Originals[part] end
+    local data = {
+        Size = part.Size,
+        Transparency = part.Transparency,
+        CanCollide = part.CanCollide,
+        Massless = part.Massless,
+        Color = part.Color,
+        Material = part.Material,
+        BrickColor = part.BrickColor,
+    }
+    Hitbox.Originals[part] = data
+    return data
+end
+
+local function restorePart(part)
+    local data = Hitbox.Originals[part]
+    if not data then return end
+    if part and part.Parent then
+        pcall(function()
+            part.Size = data.Size
+            part.Transparency = data.Transparency
+            part.CanCollide = data.CanCollide
+            part.Massless = data.Massless
+            part.Color = data.Color
+            part.Material = data.Material
+            -- BrickColor if still valid
+            pcall(function() part.BrickColor = data.BrickColor end)
+        end)
+    end
+    Hitbox.Originals[part] = nil
+end
+
+function Hitbox:RestoreAll()
+    local parts = {}
+    for part in pairs(self.Originals) do
+        table.insert(parts, part)
+    end
+    for _, part in ipairs(parts) do
+        restorePart(part)
+    end
+    table.clear(self.Originals)
+    self:ClearDrawings()
 end
 
 function Hitbox:ClearDrawings()
@@ -70,12 +117,31 @@ function Hitbox:DrawBox3D(part, color)
     end
 end
 
+local function getTargets(char, mode)
+    local targets = {}
+    if not char then return targets end
+    if mode == "Head" then
+        local h = char:FindFirstChild("Head")
+        if h then table.insert(targets, h) end
+    elseif mode == "both" then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local head = char:FindFirstChild("Head")
+        if hrp then table.insert(targets, hrp) end
+        if head then table.insert(targets, head) end
+    else
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then table.insert(targets, hrp) end
+    end
+    return targets
+end
+
 local function forcePart(part, size, showVisual, transparency)
     if not part or not part:IsA("BasePart") then return end
+    snapshot(part)
     pcall(function()
         part.Size = Vector3.new(size, size, size)
         part.CanCollide = false
-        part.Massless = true
+        -- do NOT set Massless = true — that contributes to client "freeze" feel
         if showVisual then
             part.Transparency = transparency
             part.BrickColor = BrickColor.new("Really blue")
@@ -85,8 +151,13 @@ local function forcePart(part, size, showVisual, transparency)
 end
 
 function Hitbox:Apply()
+    -- disabled → restore everything and stop
     if not self.Settings.enabled then
-        self:ClearDrawings()
+        if next(self.Originals) ~= nil then
+            self:RestoreAll()
+        else
+            self:ClearDrawings()
+        end
         return
     end
 
@@ -97,6 +168,8 @@ function Hitbox:Apply()
 
     self:ClearDrawings()
 
+    local alive = {}
+
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LocalPlayer then continue end
         local char = plr.Character
@@ -105,31 +178,29 @@ function Hitbox:Apply()
         local hum = char:FindFirstChildOfClass("Humanoid")
         if hum and hum.Health <= 0 then continue end
 
-        local targets = {}
-        if mode == "Head" then
-            local h = char:FindFirstChild("Head")
-            if h then table.insert(targets, h) end
-        elseif mode == "both" then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            local head = char:FindFirstChild("Head")
-            if hrp then table.insert(targets, hrp) end
-            if head then table.insert(targets, head) end
-        else
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then table.insert(targets, hrp) end
-        end
-
-        for _, part in ipairs(targets) do
+        for _, part in ipairs(getTargets(char, mode)) do
             forcePart(part, size, show, trans)
+            alive[part] = true
             if show then
                 self:DrawBox3D(part, Color3.fromRGB(0, 120, 255))
             end
         end
     end
+
+    -- restore parts that no longer exist / left range
+    local toRestore = {}
+    for part in pairs(self.Originals) do
+        if not alive[part] or not part.Parent then
+            table.insert(toRestore, part)
+        end
+    end
+    for _, part in ipairs(toRestore) do
+        restorePart(part)
+    end
 end
 
 function Hitbox:Cleanup()
-    self:ClearDrawings()
+    self:RestoreAll()
     for _, c in pairs(self.Connections) do
         if typeof(c) == "RBXScriptConnection" then
             c:Disconnect()
@@ -139,15 +210,30 @@ function Hitbox:Cleanup()
 end
 
 function Hitbox:Init()
-    self:Cleanup() -- do NOT set enabled = false
+    self:Cleanup() -- restores any leftover, clears connections
+
     self.Connections.render = RunService.RenderStepped:Connect(function()
         self:Apply()
     end)
+
+    -- when someone respawns, drop stale originals for old character
+    self.Connections.playerAdded = Players.PlayerAdded:Connect(function(plr)
+        if plr == LocalPlayer then return end
+        self.Connections["char_" .. plr.UserId] = plr.CharacterAdded:Connect(function()
+            -- old parts become parentless → restored next Apply
+        end)
+    end)
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            self.Connections["char_" .. plr.UserId] = plr.CharacterAdded:Connect(function() end)
+        end
+    end
 end
 
 function Hitbox:Destroy()
     self.Settings.enabled = false
-    self:Cleanup()
+    self:Cleanup() -- full restore
 end
 
 return Hitbox
