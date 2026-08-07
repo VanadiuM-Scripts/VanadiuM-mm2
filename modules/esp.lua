@@ -14,6 +14,7 @@ ESP.Settings = {
 ESP.Pool = { Line = {}, Text = {} }
 ESP.Used = { Line = 0, Text = 0 }
 ESP.Connections = {}
+ESP._coinTick = 0
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -302,6 +303,9 @@ end
 
 function ESP:ScanCoinsAndGun()
     if not (self.Settings.coins or self.Settings.gun) then return end
+    -- throttle heavy scan
+    self._coinTick = (self._coinTick or 0) + 1
+    if self._coinTick % 3 ~= 0 then return end
     for _, obj in ipairs(workspace:GetDescendants()) do
         if not obj:IsA("BasePart") then continue end
         local n = string.lower(obj.Name)
