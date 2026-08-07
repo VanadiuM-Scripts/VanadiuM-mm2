@@ -11,7 +11,8 @@ ESP.Settings = {
     gun = false,
 }
 
-ESP.Drawings = {}
+ESP.Pool = { Line = {}, Text = {} }
+ESP.Used = { Line = 0, Text = 0 }
 ESP.Connections = {}
 
 local Players = game:GetService("Players")
@@ -27,8 +28,78 @@ local ROLE_COLOR = {
     Gun      = Color3.fromRGB(100, 180, 255),
 }
 
+local BODY_PARTS = {
+    "Head", "Torso", "UpperTorso", "LowerTorso",
+    "Left Arm", "Right Arm", "Left Leg", "Right Leg",
+    "LeftUpperArm", "LeftLowerArm", "LeftHand",
+    "RightUpperArm", "RightLowerArm", "RightHand",
+    "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+    "RightUpperLeg", "RightLowerLeg", "RightFoot",
+}
+
 local function hasDrawing()
     return typeof(Drawing) == "table" and typeof(Drawing.new) == "function"
+end
+
+local function acquire(kind)
+    ESP.Used[kind] = ESP.Used[kind] + 1
+    local i = ESP.Used[kind]
+    local pool = ESP.Pool[kind]
+    if pool[i] then
+        return pool[i]
+    end
+    local obj
+    if kind == "Line" then
+        obj = Drawing.new("Line")
+        obj.Thickness = 1.5
+        obj.Transparency = 1
+        obj.ZIndex = 2
+    else
+        obj = Drawing.new("Text")
+        obj.Center = true
+        obj.Outline = true
+        obj.OutlineColor = Color3.new(0, 0, 0)
+        obj.Font = (Drawing.Fonts and Drawing.Fonts.UI) or 0
+        obj.Size = 14
+        obj.Transparency = 1
+        obj.ZIndex = 3
+    end
+    pool[i] = obj
+    return obj
+end
+
+local function hideUnused()
+    for kind, pool in pairs(ESP.Pool) do
+        local used = ESP.Used[kind]
+        for i = used + 1, #pool do
+            pcall(function() pool[i].Visible = false end)
+        end
+    end
+end
+
+local function beginFrame()
+    ESP.Used.Line = 0
+    ESP.Used.Text = 0
+end
+
+function ESP:Line(a, b, color, thick)
+    if not hasDrawing() then return end
+    local l = acquire("Line")
+    l.From = a
+    l.To = b
+    l.Color = color
+    l.Thickness = thick or 1.5
+    l.Visible = true
+end
+
+function ESP:Label(text, pos, color, size)
+    if not hasDrawing() then return end
+    local t = acquire("Text")
+    t.Text = text
+    t.Position = pos
+    t.Color = color
+    t.Size = size or 14
+    t.Visible = true
 end
 
 function ESP:GetRole(player)
@@ -48,54 +119,6 @@ function ESP:WorldToScreen(v3)
     local sp, on = cam:WorldToViewportPoint(v3)
     return Vector2.new(sp.X, sp.Y), on and sp.Z > 0
 end
-
-function ESP:Line(a, b, color, thick)
-    if not hasDrawing() then return end
-    local l = Drawing.new("Line")
-    l.From, l.To = a, b
-    l.Color = color
-    l.Thickness = thick or 1.5
-    l.Transparency = 1
-    l.Visible = true
-    l.ZIndex = 2
-    table.insert(self.Drawings, l)
-end
-
-function ESP:Label(text, pos, color, size)
-    if not hasDrawing() then return end
-    local t = Drawing.new("Text")
-    t.Text = text
-    t.Position = pos
-    t.Color = color
-    t.Size = size or 14
-    t.Center = true
-    t.Outline = true
-    t.OutlineColor = Color3.new(0, 0, 0)
-    t.Font = (Drawing.Fonts and Drawing.Fonts.UI) or 0
-    t.Transparency = 1
-    t.Visible = true
-    t.ZIndex = 3
-    table.insert(self.Drawings, t)
-end
-
-function ESP:Clear()
-    for _, d in ipairs(self.Drawings) do
-        pcall(function() d:Destroy() end)
-    end
-    table.clear(self.Drawings)
-end
-
--- Only real body parts (ignore Knife/Gun/tools/accessories)
-local BODY_PARTS = {
-    -- no HumanoidRootPart (hitbox expander blows it up)
-    -- no tools / accessories
-    "Head", "Torso", "UpperTorso", "LowerTorso",
-    "Left Arm", "Right Arm", "Left Leg", "Right Leg",
-    "LeftUpperArm", "LeftLowerArm", "LeftHand",
-    "RightUpperArm", "RightLowerArm", "RightHand",
-    "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
-    "RightUpperLeg", "RightLowerLeg", "RightFoot",
-}
 
 function ESP:GetCharacterBounds(char)
     local points = {}
@@ -128,7 +151,6 @@ function ESP:GetCharacterBounds(char)
         end
     end
 
-    -- world AABB from body points only
     local minV = Vector3.new(math.huge, math.huge, math.huge)
     local maxV = Vector3.new(-math.huge, -math.huge, -math.huge)
     for _, p in ipairs(points) do
@@ -138,7 +160,6 @@ function ESP:GetCharacterBounds(char)
 
     local center = (minV + maxV) * 0.5
     local size = maxV - minV
-    -- clamp absurd sizes (safety)
     size = Vector3.new(
         math.clamp(size.X, 1, 8),
         math.clamp(size.Y, 1, 10),
@@ -154,14 +175,13 @@ function ESP:GetCharacterBounds(char)
             end
         end
     end
-    return corners, cf, size
+    return corners
 end
 
 function ESP:ProjectBounds(corners)
     local minX, minY = math.huge, math.huge
     local maxX, maxY = -math.huge, -math.huge
     local any = false
-
     for _, world in ipairs(corners) do
         local sp, on = self:WorldToScreen(world)
         if on then
@@ -172,7 +192,6 @@ function ESP:ProjectBounds(corners)
             maxY = math.max(maxY, sp.Y)
         end
     end
-
     if not any then return nil end
     return { minX = minX, minY = minY, maxX = maxX, maxY = maxY }
 end
@@ -189,7 +208,6 @@ function ESP:BoxCorner(bounds, color)
     local x1, y1, x2, y2 = bounds.minX, bounds.minY, bounds.maxX, bounds.maxY
     local w, h = x2 - x1, y2 - y1
     local c = math.min(w, h) * 0.25
-
     self:Line(Vector2.new(x1, y1), Vector2.new(x1 + c, y1), color)
     self:Line(Vector2.new(x1, y1), Vector2.new(x1, y1 + c), color)
     self:Line(Vector2.new(x2 - c, y1), Vector2.new(x2, y1), color)
@@ -284,17 +302,14 @@ end
 
 function ESP:ScanCoinsAndGun()
     if not (self.Settings.coins or self.Settings.gun) then return end
-
     for _, obj in ipairs(workspace:GetDescendants()) do
         if not obj:IsA("BasePart") then continue end
         local n = string.lower(obj.Name)
-
         if self.Settings.coins and (n:find("coin") or n:find("gold")) then
             if obj.Transparency < 1 and obj.Size.Magnitude < 15 then
                 self:DrawWorldItem(obj, "Coin", ROLE_COLOR.Coin)
             end
         end
-
         if self.Settings.gun and (n == "gun" or n:find("gun_drop") or n:find("gunpickup")) then
             self:DrawWorldItem(obj, "Gun", ROLE_COLOR.Gun)
         end
@@ -302,9 +317,12 @@ function ESP:ScanCoinsAndGun()
 end
 
 function ESP:Update()
-    self:Clear()
-    if not self.Settings.enabled then return end
-    if not hasDrawing() then return end
+    beginFrame()
+
+    if not self.Settings.enabled or not hasDrawing() then
+        hideUnused()
+        return
+    end
 
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LocalPlayer then continue end
@@ -342,22 +360,41 @@ function ESP:Update()
     end
 
     self:ScanCoinsAndGun()
+    hideUnused()
+end
+
+function ESP:DestroyPool()
+    for _, pool in pairs(self.Pool) do
+        for _, obj in ipairs(pool) do
+            pcall(function()
+                obj.Visible = false
+                obj:Destroy()
+            end)
+        end
+        table.clear(pool)
+    end
+    self.Used.Line = 0
+    self.Used.Text = 0
 end
 
 function ESP:Init()
-    self:Destroy()
+    self:Cleanup()
     self.Connections.render = RunService.RenderStepped:Connect(function()
         self:Update()
     end)
 end
 
-function ESP:Destroy()
-    self:Clear()
-    self.Settings.enabled = false
+function ESP:Cleanup()
+    self:DestroyPool()
     for _, c in pairs(self.Connections) do
         if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
     end
     table.clear(self.Connections)
+end
+
+function ESP:Destroy()
+    self.Settings.enabled = false
+    self:Cleanup()
 end
 
 return ESP
