@@ -69,11 +69,13 @@ local hitbox = loadModule("hitbox")
 local movement = loadModule("movement")
 local misc = loadModule("misc")
 local farm = loadModule("farm")
+local world = loadModule("world")
 
 if esp and esp.Init then esp:Init() end
 if movement and movement.Init then movement:Init() end
 if misc and misc.Init then misc:Init() end
 if farm and farm.Init then farm:Init() end
+if world and world.Init then world:Init() end
 
 local TabCombat = Window:AddTab("Combat")
 local TabVisuals = Window:AddTab("Visuals")
@@ -111,9 +113,127 @@ if esp then
     EspPlayer:AddToggle("esp_tracer", { Text = "Tracer", Default = false, Callback = function(v) esp.Settings.tracer = v end })
     EspWorld:AddToggle("esp_coins", { Text = "Coins ESP", Default = false, Callback = function(v) esp.Settings.coins = v end })
     EspWorld:AddToggle("esp_gun", { Text = "Dropped gun ESP", Default = false, Callback = function(v) esp.Settings.gun = v end })
+
+
+if world then
+    -- Other / world style
+    EspOther:AddToggle("w_ambient", {
+        Text = "Custom ambient", Default = false,
+        Callback = function(v) world.Settings.ambientEnabled = v end,
+    })
+    EspOther:AddLabel("Ambient color"):AddColorPicker("w_amb_col", {
+        Default = Color3.fromRGB(128, 128, 128),
+        Callback = function(c) world.Settings.ambient = c end,
+    })
+    EspOther:AddLabel("Outdoor ambient"):AddColorPicker("w_out_col", {
+        Default = Color3.fromRGB(128, 128, 128),
+        Callback = function(c) world.Settings.outdoorAmbient = c end,
+    })
+
+    EspOther:AddToggle("w_fog", {
+        Text = "Fog", Default = false,
+        Callback = function(v) world.Settings.fogEnabled = v end,
+    })
+    EspOther:AddLabel("Fog color"):AddColorPicker("w_fog_col", {
+        Default = Color3.fromRGB(192, 192, 192),
+        Callback = function(c) world.Settings.fogColor = c end,
+    })
+    EspOther:AddSlider("w_fog_start", {
+        Text = "Fog start", Default = 0, Min = 0, Max = 500, Rounding = 0,
+        Callback = function(v) world.Settings.fogStart = v end,
+    })
+    EspOther:AddSlider("w_fog_end", {
+        Text = "Fog end", Default = 1000, Min = 50, Max = 5000, Rounding = 0,
+        Callback = function(v) world.Settings.fogEnd = v end,
+    })
+
+    EspOther:AddToggle("w_time", {
+        Text = "Custom time", Default = false,
+        Callback = function(v) world.Settings.timeEnabled = v end,
+    })
+    EspOther:AddSlider("w_clock", {
+        Text = "Clock time", Default = 14, Min = 0, Max = 24, Rounding = 1,
+        Callback = function(v) world.Settings.clockTime = v end,
+    })
+
+    EspOther:AddToggle("w_sky", {
+        Text = "Custom sky", Default = false,
+        Callback = function(v) world.Settings.skyEnabled = v end,
+    })
+    EspOther:AddDropdown("w_sky_id", {
+        Values = { "default", "nebula", "sunset", "night" },
+        Default = 1, Multi = false, Text = "Sky preset",
+        Callback = function(v)
+            if type(v) == "number" then
+                world.Settings.skyId = ({ "default", "nebula", "sunset", "night" })[v] or "default"
+            else
+                world.Settings.skyId = v
+            end
+        end,
+    })
+
+    WorldGroup:AddToggle("w_trail", {
+        Text = "Trail", Default = false,
+        Callback = function(v) world.Settings.trailEnabled = v end,
+    })
+    WorldGroup:AddLabel("Trail color"):AddColorPicker("w_trail_col", {
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(c) world.Settings.trailColor = c end,
+    })
+
+    WorldGroup:AddToggle("w_hat", {
+        Text = "China hat", Default = false,
+        Callback = function(v) world.Settings.chinaHat = v end,
+    })
+    WorldGroup:AddLabel("Hat color"):AddColorPicker("w_hat_col", {
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(c) world.Settings.chinaHatColor = c end,
+    })
+
+    WorldGroup:AddToggle("w_bloom", {
+        Text = "Bloom", Default = false,
+        Callback = function(v) world.Settings.bloomEnabled = v end,
+    })
+    WorldGroup:AddSlider("w_bloom_i", {
+        Text = "Bloom intensity", Default = 1, Min = 0, Max = 5, Rounding = 1,
+        Callback = function(v) world.Settings.bloomIntensity = v end,
+    })
+
+    WorldGroup:AddToggle("w_cc", {
+        Text = "Color correction", Default = false,
+        Callback = function(v) world.Settings.ccEnabled = v end,
+    })
+    WorldGroup:AddSlider("w_cc_sat", {
+        Text = "Saturation", Default = 0, Min = -1, Max = 1, Rounding = 2,
+        Callback = function(v) world.Settings.ccSaturation = v end,
+    })
+    WorldGroup:AddSlider("w_cc_con", {
+        Text = "Contrast", Default = 0, Min = -1, Max = 1, Rounding = 2,
+        Callback = function(v) world.Settings.ccContrast = v end,
+    })
+
+    WorldGroup:AddToggle("w_atmo", {
+        Text = "Atmosphere", Default = false,
+        Callback = function(v) world.Settings.atmosphereEnabled = v end,
+    })
+    WorldGroup:AddSlider("w_atmo_d", {
+        Text = "Density", Default = 0.3, Min = 0, Max = 1, Rounding = 2,
+        Callback = function(v) world.Settings.atmosphereDensity = v end,
+    })
+
+    WorldGroup:AddToggle("w_cross", {
+        Text = "Crosshair", Default = false,
+        Callback = function(v) world.Settings.crosshair = v end,
+    })
+    WorldGroup:AddLabel("Crosshair color"):AddColorPicker("w_cross_col", {
+        Default = Color3.fromRGB(255, 255, 255),
+        Callback = function(c) world.Settings.crosshairColor = c end,
+    })
 end
-WorldGroup:AddLabel("Box uses GetBoundingBox")
-WorldGroup:AddLabel("edges of the character")
+
+WorldGroup:AddLabel("VanadiuM world visuals")
+
+end
 
 -- Aimbot
 if aimbot then
@@ -271,6 +391,7 @@ MenuGroup:AddButton("Unload", function()
     if movement and movement.Destroy then movement:Destroy() end
     if misc and misc.Destroy then misc:Destroy() end
     if farm and farm.Destroy then farm:Destroy() end
+    if world and world.Destroy then world:Destroy() end
     Library:Unload()
 end)
 
