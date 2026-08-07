@@ -69,17 +69,19 @@ local hitbox = loadModule("hitbox")
 local movement = loadModule("movement")
 local misc = loadModule("misc")
 local world = loadModule("world")
+local combat = loadModule("combat")
 
 if esp and esp.Init then esp:Init() end
 if movement and movement.Init then movement:Init() end
 if misc and misc.Init then misc:Init() end
 if world and world.Init then world:Init() end
+if combat and combat.Init then combat:Init() end
 
 do
     local missing = {}
     for name, mod in pairs({
         esp = esp, aimbot = aimbot, hitbox = hitbox,
-        movement = movement, misc = misc, world = world,
+        movement = movement, misc = misc, world = world, combat = combat,
     }) do
         if not mod then table.insert(missing, name) end
     end
@@ -97,6 +99,7 @@ local TabSettings = Window:AddTab("Settings")
 
 local AimGroup = TabCombat:AddLeftGroupbox("Aimbot")
 local HitGroup = TabCombat:AddRightGroupbox("Hitbox")
+local KillGroup = TabCombat:AddLeftGroupbox("Kill All")
 
 local EspBox = TabVisuals:AddLeftTabbox("ESP")
 local EspPlayer = EspBox:AddTab("Player")
@@ -209,11 +212,39 @@ if world then
     WAura:AddSlider("w_aura_size", { Text = "Ring size", Default = 4, Min = 2, Max = 12, Rounding = 1, Callback = function(v) world.Settings.auraSize = v end })
     WAura:AddSlider("w_aura_tr", { Text = "Aura transparency", Default = 0.6, Min = 0, Max = 0.95, Rounding = 2, Callback = function(v) world.Settings.auraTransparency = v end })
 
-    WAura:AddToggle("w_aspect", { Text = "Aspect ratio FOV", Default = false, Callback = function(v) world.Settings.aspectEnabled = v end })
-    WAura:AddSlider("w_aspect_r", { Text = "Aspect (FOV scale)", Default = 1.33, Min = 0.8, Max = 2.5, Rounding = 2, Callback = function(v) world.Settings.aspectRatio = v end })
+    WAura:AddToggle("w_aspect", { Text = "Aspect ratio (stretch)", Default = false, Callback = function(v) world.Settings.aspectEnabled = v end })
+    WAura:AddSlider("w_aspect_r", { Text = "Stretch amount", Default = 0.75, Min = 0.4, Max = 1.5, Rounding = 2, Callback = function(v) world.Settings.aspectRatio = v end })
 else
     WLighting:AddLabel("world module not loaded")
 end
+
+
+-- KILL ALL
+if combat then
+    KillGroup:AddToggle("ka_on", {
+        Text = "Kill all", Default = false,
+        Tooltip = "Needs Knife (Murderer)",
+        Callback = function(v) combat.Settings.killAll = v end,
+    })
+    KillGroup:AddDropdown("ka_method", {
+        Values = { "tp", "touch", "both" }, Default = 1, Multi = false, Text = "Method",
+        Callback = function(v)
+            if type(v) == "number" then
+                combat.Settings.method = ({ "tp", "touch", "both" })[v] or "tp"
+            else
+                combat.Settings.method = v
+            end
+        end,
+    })
+    KillGroup:AddSlider("ka_delay", {
+        Text = "Delay", Default = 0.12, Min = 0.05, Max = 0.5, Rounding = 2,
+        Callback = function(v) combat.Settings.delay = v end,
+    })
+    KillGroup:AddLabel("Works as Murderer with Knife")
+else
+    KillGroup:AddLabel("combat module not loaded")
+end
+
 
 -- AIMBOT
 if aimbot then
@@ -297,6 +328,7 @@ MenuGroup:AddButton("Unload", function()
     if movement and movement.Destroy then movement:Destroy() end
     if misc and misc.Destroy then misc:Destroy() end
     if world and world.Destroy then world:Destroy() end
+    if combat and combat.Destroy then combat:Destroy() end
     Library:Unload()
 end)
 
