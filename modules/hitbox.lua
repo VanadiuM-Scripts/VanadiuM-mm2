@@ -2,78 +2,21 @@ local Hitbox = {}
 
 Hitbox.Settings = {
     enabled = false,
-    size = 3,
+    size = 50,              -- absolute size (like _G.HeadSize)
     showVisual = true,
-    visualTransparency = 0.65,
+    visualTransparency = 0.7,
+    part = "HumanoidRootPart", -- HumanoidRootPart | Head | both
 }
 
-Hitbox.Store = {}
-Hitbox.Drawings = {}
 Hitbox.Connections = {}
+Hitbox.Drawings = {}
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
-local VALID = {
-    HumanoidRootPart = true,
-    Torso = true,
-    UpperTorso = true,
-}
-
 local function hasDrawing()
     return typeof(Drawing) == "table" and typeof(Drawing.new) == "function"
-end
-
-function Hitbox:Parts(char)
-    local out = {}
-    if not char then return out end
-    for name in pairs(VALID) do
-        local p = char:FindFirstChild(name)
-        if p and p:IsA("BasePart") then table.insert(out, p) end
-    end
-    return out
-end
-
-function Hitbox:Expand(part, mult)
-    if not part or not VALID[part.Name] then return end
-    if not self.Store[part] then
-        self.Store[part] = {
-            originalSize = part.Size,
-            originalMassless = part.Massless,
-            originalTransparency = part.Transparency,
-            originalCanCollide = part.CanCollide,
-            originalColor = part.Color,
-        }
-    end
-    local data = self.Store[part]
-    local want = data.originalSize * math.max(1, mult)
-    if part.Size ~= want then
-        part.Size = want
-        part.Massless = true
-    end
-    if self.Settings.showVisual then
-        part.Transparency = self.Settings.visualTransparency
-        part.Color = Color3.fromRGB(255, 80, 80)
-        part.CanCollide = false
-    end
-end
-
-function Hitbox:Reset(part)
-    local data = self.Store[part]
-    if data and part and part.Parent then
-        part.Size = data.originalSize
-        part.Massless = data.originalMassless
-        part.Transparency = data.originalTransparency
-        part.CanCollide = data.originalCanCollide
-        if data.originalColor then part.Color = data.originalColor end
-    end
-    self.Store[part] = nil
-end
-
-function Hitbox:ResetAll()
-    for part in pairs(self.Store) do self:Reset(part) end
-    table.clear(self.Store)
 end
 
 function Hitbox:ClearDrawings()
@@ -84,9 +27,10 @@ function Hitbox:ClearDrawings()
 end
 
 function Hitbox:DrawBox3D(part, color)
-    if not hasDrawing() or not part then return end
+    if not hasDrawing() or not part or not part.Parent then return end
     local cam = workspace.CurrentCamera
     if not cam then return end
+
     local cf, size = part.CFrame, part.Size
     local half = size / 2
     local corners = {}
@@ -97,16 +41,19 @@ function Hitbox:DrawBox3D(part, color)
             end
         end
     end
+
     local sc = {}
     for i, w in ipairs(corners) do
         local sp, on = cam:WorldToViewportPoint(w)
         sc[i] = { Vector2.new(sp.X, sp.Y), on and sp.Z > 0 }
     end
+
     local edges = {
         {1,2},{3,4},{5,6},{7,8},
         {1,3},{2,4},{5,7},{6,8},
         {1,5},{2,6},{3,7},{4,8},
     }
+
     for _, e in ipairs(edges) do
         local a, b = sc[e[1]], sc[e[2]]
         if a and b and a[2] and b[2] then
@@ -123,62 +70,81 @@ function Hitbox:DrawBox3D(part, color)
     end
 end
 
+local function forcePart(part, size, showVisual, transparency)
+    if not part or not part:IsA("BasePart") then return end
+    pcall(function()
+        part.Size = Vector3.new(size, size, size)
+        part.CanCollide = false
+        part.Massless = true
+        if showVisual then
+            part.Transparency = transparency
+            part.BrickColor = BrickColor.new("Really blue")
+            part.Material = Enum.Material.Neon
+        end
+    end)
+end
+
 function Hitbox:Apply()
-    if not self.Settings.enabled then return end
-    local mult = math.max(1, self.Settings.size)
+    if not self.Settings.enabled then
+        self:ClearDrawings()
+        return
+    end
+
+    local size = math.max(1, self.Settings.size)
+    local show = self.Settings.showVisual
+    local trans = self.Settings.visualTransparency
+    local mode = self.Settings.part
+
     self:ClearDrawings()
+
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr == LocalPlayer then continue end
         local char = plr.Character
         if not char then continue end
+
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then continue end
-        for _, part in ipairs(self:Parts(char)) do
-            self:Expand(part, mult)
-            if self.Settings.showVisual then
-                self:DrawBox3D(part, Color3.fromRGB(255, 60, 60))
+        if hum and hum.Health <= 0 then continue end
+
+        local targets = {}
+        if mode == "Head" then
+            local h = char:FindFirstChild("Head")
+            if h then table.insert(targets, h) end
+        elseif mode == "both" then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            local head = char:FindFirstChild("Head")
+            if hrp then table.insert(targets, hrp) end
+            if head then table.insert(targets, head) end
+        else
+            -- default HumanoidRootPart
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then table.insert(targets, hrp) end
+        end
+
+        for _, part in ipairs(targets) do
+            forcePart(part, size, show, trans)
+            if show then
+                self:DrawBox3D(part, Color3.fromRGB(0, 120, 255))
             end
         end
     end
-    for part in pairs(self.Store) do
-        if not part.Parent or not part.Parent.Parent then
-            self.Store[part] = nil
-        end
-    end
-end
-
-function Hitbox:HookPlayer(plr)
-    if plr == LocalPlayer then return end
-    local key = "char_" .. tostring(plr.UserId)
-    if self.Connections[key] then self.Connections[key]:Disconnect() end
-    self.Connections[key] = plr.CharacterAdded:Connect(function()
-        task.wait(0.4)
-        if self.Settings.enabled then self:Apply() end
-    end)
 end
 
 function Hitbox:Init()
     self:Destroy()
-    self.Connections.heartbeat = RunService.RenderStepped:Connect(function()
-        if self.Settings.enabled then
-            self:Apply()
-        else
-            self:ResetAll()
-            self:ClearDrawings()
-        end
-    end)
-    for _, plr in ipairs(Players:GetPlayers()) do self:HookPlayer(plr) end
-    self.Connections.playerAdded = Players.PlayerAdded:Connect(function(plr)
-        self:HookPlayer(plr)
+
+    -- same idea as the source: every RenderStepped force size
+    self.Connections.render = RunService.RenderStepped:Connect(function()
+        self:Apply()
     end)
 end
 
 function Hitbox:Destroy()
-    self:ResetAll()
-    self:ClearDrawings()
     self.Settings.enabled = false
+    self:ClearDrawings()
     for _, c in pairs(self.Connections) do
-        if typeof(c) == "RBXScriptConnection" then c:Disconnect() end
+        if typeof(c) == "RBXScriptConnection" then
+            c:Disconnect()
+        end
     end
     table.clear(self.Connections)
 end
