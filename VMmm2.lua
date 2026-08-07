@@ -1,3 +1,4 @@
+print("Loading...")
 local function httpGet(url)
     local ok, res = pcall(function() return game:HttpGet(url) end)
     if ok and res then return res end
@@ -243,3 +244,4 @@ SaveManager:SetFolder("VanadiuM/MM2")
 SaveManager:BuildConfigSection(TabSettings)
 ThemeManager:ApplyToTab(TabSettings)
 SaveManager:LoadAutoloadConfig()
+print("loaded!")
