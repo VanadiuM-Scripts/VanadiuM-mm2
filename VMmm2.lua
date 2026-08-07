@@ -123,7 +123,7 @@ if aimbot then
         end,
     })
     AimGroup:AddToggle("aim_rmb", {
-        Text = "Hold RMB only", Default = true,
+        Text = "Hold RMB only", Default = false,
         Callback = function(v) aimbot.Settings.aimKey = v end,
     })
     AimGroup:AddToggle("aim_role", {
@@ -142,7 +142,7 @@ if aimbot then
         Callback = function(v) aimbot.Settings.smoothness = v end,
     })
     AimGroup:AddToggle("aim_fov", {
-        Text = "Show FOV", Default = false,
+        Text = "Show FOV", Default = true,
         Callback = function(v) aimbot.Settings.showFOV = v end,
     })
     AimGroup:AddSlider("aim_fov_r", {
@@ -165,11 +165,21 @@ if hitbox then
         Callback = function(v) hitbox.Settings.showVisual = v end,
     })
     HitGroup:AddSlider("hb_size", {
-        Text = "Size x", Default = 3, Min = 1, Max = 15, Rounding = 1,
+        Text = "Size", Default = 50, Min = 5, Max = 100, Rounding = 0,
         Callback = function(v) hitbox.Settings.size = v end,
     })
+    HitGroup:AddDropdown("hb_part", {
+        Values = { "HumanoidRootPart", "Head", "both" }, Default = 1, Multi = false, Text = "Part",
+        Callback = function(v)
+            if type(v) == "number" then
+                hitbox.Settings.part = ({ "HumanoidRootPart", "Head", "both" })[v] or "HumanoidRootPart"
+            else
+                hitbox.Settings.part = v
+            end
+        end,
+    })
     HitGroup:AddSlider("hb_trans", {
-        Text = "Visual transparency", Default = 0.65, Min = 0.2, Max = 0.9, Rounding = 2,
+        Text = "Visual transparency", Default = 0.7, Min = 0.2, Max = 0.9, Rounding = 2,
         Callback = function(v) hitbox.Settings.visualTransparency = v end,
     })
 end
