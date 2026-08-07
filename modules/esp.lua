@@ -85,18 +85,67 @@ function ESP:Clear()
     table.clear(self.Drawings)
 end
 
+-- Only real body parts (ignore Knife/Gun/tools/accessories)
+local BODY_PARTS = {
+    -- no HumanoidRootPart (hitbox expander blows it up)
+    -- no tools / accessories
+    "Head", "Torso", "UpperTorso", "LowerTorso",
+    "Left Arm", "Right Arm", "Left Leg", "Right Leg",
+    "LeftUpperArm", "LeftLowerArm", "LeftHand",
+    "RightUpperArm", "RightLowerArm", "RightHand",
+    "LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+    "RightUpperLeg", "RightLowerLeg", "RightFoot",
+}
+
 function ESP:GetCharacterBounds(char)
-    local ok, cf, size = pcall(function()
-        return char:GetBoundingBox()
-    end)
-    if not ok or not cf then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return nil end
-        cf = hrp.CFrame
-        size = Vector3.new(4, 6, 2)
+    local points = {}
+    for _, name in ipairs(BODY_PARTS) do
+        local part = char:FindFirstChild(name)
+        if part and part:IsA("BasePart") then
+            local cf, size = part.CFrame, part.Size
+            local half = size * 0.5
+            for _, sx in ipairs({ -1, 1 }) do
+                for _, sy in ipairs({ -1, 1 }) do
+                    for _, sz in ipairs({ -1, 1 }) do
+                        table.insert(points, (cf * CFrame.new(half.X * sx, half.Y * sy, half.Z * sz)).Position)
+                    end
+                end
+            end
+        end
     end
 
-    local half = size / 2
+    if #points == 0 then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+        local half = Vector3.new(2, 3, 1)
+        local cf = hrp.CFrame
+        for _, sx in ipairs({ -1, 1 }) do
+            for _, sy in ipairs({ -1, 1 }) do
+                for _, sz in ipairs({ -1, 1 }) do
+                    table.insert(points, (cf * CFrame.new(half.X * sx, half.Y * sy, half.Z * sz)).Position)
+                end
+            end
+        end
+    end
+
+    -- world AABB from body points only
+    local minV = Vector3.new(math.huge, math.huge, math.huge)
+    local maxV = Vector3.new(-math.huge, -math.huge, -math.huge)
+    for _, p in ipairs(points) do
+        minV = Vector3.new(math.min(minV.X, p.X), math.min(minV.Y, p.Y), math.min(minV.Z, p.Z))
+        maxV = Vector3.new(math.max(maxV.X, p.X), math.max(maxV.Y, p.Y), math.max(maxV.Z, p.Z))
+    end
+
+    local center = (minV + maxV) * 0.5
+    local size = maxV - minV
+    -- clamp absurd sizes (safety)
+    size = Vector3.new(
+        math.clamp(size.X, 1, 8),
+        math.clamp(size.Y, 1, 10),
+        math.clamp(size.Z, 1, 8)
+    )
+    local cf = CFrame.new(center)
+    local half = size * 0.5
     local corners = {}
     for _, sx in ipairs({ -1, 1 }) do
         for _, sy in ipairs({ -1, 1 }) do
