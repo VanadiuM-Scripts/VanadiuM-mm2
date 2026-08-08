@@ -1,8 +1,3 @@
---[[
-    VanadiuM Movement — Potassium
-    Speed / Fly / Noclip
-]]
-
 local Movement = {}
 
 Movement.Settings = {
@@ -17,11 +12,36 @@ Movement.Connections = {}
 Movement.FlyBV = nil
 Movement.FlyBG = nil
 Movement.OriginalWalkSpeed = nil
+Movement.SelectedPlayer = nil
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+
+function Movement:GetPlayerNames()
+    local names = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            table.insert(names, plr.Name)
+        end
+    end
+    table.sort(names)
+    return names
+end
+
+function Movement:TeleportTo(name)
+    if not name or name == "" then return false end
+    local plr = Players:FindFirstChild(name)
+    if not plr then return false end
+    local target = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+    local root = self:HRP()
+    if not target or not root then return false end
+    pcall(function()
+        root.CFrame = target.CFrame * CFrame.new(0, 0, 3)
+    end)
+    return true
+end
 
 function Movement:Char()
     return LocalPlayer.Character
