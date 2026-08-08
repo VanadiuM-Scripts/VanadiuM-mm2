@@ -112,6 +112,7 @@ local WAura = TabWorld:AddRightGroupbox("Aura")
 
 local MoveL = TabMove:AddLeftGroupbox("Speed / Fly")
 local MoveR = TabMove:AddRightGroupbox("Noclip")
+local TpGroup = TabMove:AddLeftGroupbox("Teleport")
 local MiscL = TabMisc:AddLeftGroupbox("Utilities")
 local MiscR = TabMisc:AddRightGroupbox("Camera")
 local MenuGroup = TabSettings:AddLeftGroupbox("Menu")
@@ -308,6 +309,78 @@ if movement then
     })
     MoveL:AddSlider("mv_fly_s", { Text = "Fly speed", Default = 50, Min = 10, Max = 150, Rounding = 0, Callback = function(v) movement.Settings.flySpeed = v end })
     MoveR:AddToggle("mv_noclip", { Text = "Noclip", Default = false, Callback = function(v) movement.Settings.noclipEnabled = v end })
+
+    -- Teleport to player
+    local function refreshTpPlayers()
+        local names = movement:GetPlayerNames()
+        if #names == 0 then names = { "(no players)" } end
+        if Options.tp_player then
+            pcall(function()
+                Options.tp_player:SetValues(names)
+            end)
+            -- fallback: some Linoria builds use .Values
+            pcall(function()
+                Options.tp_player.Values = names
+                if Options.tp_player.Display then Options.tp_player:Display() end
+            end)
+        end
+        return names
+    end
+
+    local initialNames = movement:GetPlayerNames()
+    if #initialNames == 0 then initialNames = { "(no players)" } end
+
+    TpGroup:AddDropdown("tp_player", {
+        Values = initialNames,
+        Default = 1,
+        Multi = false,
+        Text = "Player",
+        Callback = function(v)
+            if type(v) == "number" then
+                local names = movement:GetPlayerNames()
+                movement.SelectedPlayer = names[v]
+            else
+                movement.SelectedPlayer = v
+            end
+        end,
+    })
+    TpGroup:AddButton("Teleport", function()
+        local name = movement.SelectedPlayer
+        if not name or name == "(no players)" then
+            -- try current dropdown value
+            if Options.tp_player and Options.tp_player.Value then
+                name = Options.tp_player.Value
+                if type(name) == "number" then
+                    local names = movement:GetPlayerNames()
+                    name = names[name]
+                end
+            end
+        end
+        if name and name ~= "(no players)" then
+            local ok = movement:TeleportTo(name)
+            if ok then
+                Library:Notify("TP → " .. name, 2)
+            else
+                Library:Notify("TP failed (no character?)", 2)
+            end
+        else
+            Library:Notify("Select a player", 2)
+        end
+    end)
+    TpGroup:AddButton("Refresh list", function()
+        local names = refreshTpPlayers()
+        Library:Notify("Players: " .. tostring(#names), 2)
+    end)
+
+    -- auto-refresh when players join/leave
+    game:GetService("Players").PlayerAdded:Connect(function()
+        task.wait(0.3)
+        refreshTpPlayers()
+    end)
+    game:GetService("Players").PlayerRemoving:Connect(function()
+        task.wait(0.1)
+        refreshTpPlayers()
+    end)
 else
     MoveL:AddLabel("movement module not loaded")
 end
